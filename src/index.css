@@ -12,20 +12,29 @@
   --subtle: #94a3b8;
   --indigo: #4f46e5;
   --canvas-bg: #f8fafc;
+  
+  --grad-main: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --grad-surface: linear-gradient(180deg, rgba(238, 242, 255, 0.5) 0%, rgba(255, 255, 255, 0) 100%);
+  --grad-green: linear-gradient(135deg, #10b981, #059669);
+  --grad-orange: linear-gradient(135deg, #f59e0b, #d97706);
+  --grad-dark: linear-gradient(145deg, #0f172a, #1e293b);
 }
 
 [data-theme='dark'] {
-  --bg: #0f172a;
-  --white: #1e293b;
-  --surf: #1e293b;
-  --surf2: #334155;
-  --border: #334155;
+  --bg: #020617;
+  --white: #0f172a;
+  --surf: #0f172a;
+  --surf2: #1e293b;
+  --border: #33415566;
   --text: #f8fafc;
-  --text2: #f1f5f9;
-  --muted: #cbd5e1;
-  --subtle: #94a3b8;
+  --text2: #e2e8f0;
+  --muted: #94a3b8;
+  --subtle: #64748b;
   --indigo: #818cf8;
   --canvas-bg: #020617;
+
+  --grad-main: linear-gradient(135deg, #6366f1, #a855f7);
+  --grad-surface: linear-gradient(180deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0) 100%);
 }
 
 body {
@@ -48,4 +57,15 @@ body {
 @keyframes slideRight {
   from { opacity: 0; transform: translateX(-12px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes textShimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.shimmer-text {
+  background-size: 200% auto;
+  animation: textShimmer 4s linear infinite;
 }

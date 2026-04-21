@@ -11,6 +11,7 @@ import { ModelingInputPanel } from "./components/ModelingInputPanel";
 import { AttentionHeatmap, WeightHistogram, ConfusionMatrix, MetricsChart, ComparePanel, ExperimentTracker, Sparkline, KMeansClusters, XGBTreeViz } from "./components/Tabs";
 import { AIChat } from "./components/AIChat";
 import { CreativeEngine } from "./components/CreativeEngine";
+import { SavedModelsPanel } from "./components/SavedModelsPanel";
 import { AuthModal } from "./components/AuthModal";
 import { Tooltip } from "./components/Tooltip";
 import { Moon, Sun } from 'lucide-react';
@@ -227,6 +228,27 @@ export default function App(){
         <ExperimentTracker experiments={experiments} currentModel={modelKey} currentFw={framework} trainData={trainData}/>
       </div>
     ) },
+    { id: 'checkpoint', label: 'Checkpoints & Cloud', icon: '💾', component: (
+      <SavedModelsPanel 
+        user={user} 
+        currentConfig={{
+          modelKey,
+          framework,
+          hyperparams,
+          epoch,
+          accuracy: trainData.at(-1)?.acc * 100 || 0,
+          loss: trainData.at(-1)?.loss || 0
+        }}
+        onLoad={(saved: any) => {
+          setModelKey(saved.modelKey);
+          setFramework(saved.framework);
+          setHyperparams(saved.hyperparams);
+          setEpoch(saved.epoch);
+          // In a real app we'd load weights into the simulation here
+          toast(`Loaded checkpoint: ${saved.name}`);
+        }}
+      />
+    ) },
   ];
 
   const activeModule = sections.find(s => s.id === activeModuleId);
@@ -249,17 +271,17 @@ export default function App(){
       `}</style>
 
       {/* ── TOP NAV ── */}
-      <nav style={{background:T.white,borderBottom:`1px solid ${T.border}`,padding:'0 16px',display:'flex',alignItems:'center',gap:16,height:54,flexShrink:0,boxShadow:'0 1px 6px rgba(0,0,0,.05)',zIndex:100}}>
+      <nav style={{background:'var(--grad-main)',padding:'0 20px',display:'flex',alignItems:'center',gap:16,height:58,flexShrink:0,boxShadow:'0 4px 20px rgba(0,0,0,.15)',zIndex:100}}>
         {/* Logo */}
-        <div style={{display:'flex',alignItems:'center',gap:8,paddingRight:16,borderRight:`1px solid ${T.border}`,flexShrink:0}}>
-          <div style={{width:30,height:30,borderRadius:9,background:`linear-gradient(135deg,${T.indigo},${T.violet})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,boxShadow:`0 2px 10px ${T.indigo}44`, color:'white'}}>◈</div>
-          <div><div style={{fontSize:13,fontWeight:700,color:T.text,letterSpacing:'-.01em',lineHeight:1}}>NETVIS</div><div style={{fontSize:8,color:T.muted,letterSpacing:'.06em'}}>ML EXPLORER v4</div></div>
+        <div style={{display:'flex',alignItems:'center',gap:12,paddingRight:20,borderRight:'1px solid rgba(255,255,255,0.15)',flexShrink:0}}>
+          <div style={{width:34,height:34,borderRadius:10,background:'rgba(255,255,255,0.15)',backdropFilter:'blur(10px)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,boxShadow:'0 4px 12px rgba(0,0,0,0.1)', color:'white', border: '1px solid rgba(255,255,255,0.2)'}}>◈</div>
+          <div><div style={{fontSize:15,fontWeight:900,color:'white',letterSpacing:'-0.02em',lineHeight:1}}>NETVIS</div><div style={{fontSize:8,color:'rgba(255,255,255,0.7)',letterSpacing:'.1em',fontWeight:600}}>AI PLATFORM v4</div></div>
         </div>
 
         {/* Theme Switcher */}
-        <div style={{display:'flex', background: T.surf2, padding: '3px', borderRadius: 10, border: `1px solid ${T.border}`}}>
-          <button onClick={() => setTheme('light')} style={{ padding: '6px 10px', borderRadius: 7, background: theme === 'light' ? T.white : 'transparent', border: 'none', cursor: 'pointer', display: 'flex', color: theme === 'light' ? T.indigo : T.subtle }}><Sun size={14} /></button>
-          <button onClick={() => setTheme('dark')} style={{ padding: '6px 10px', borderRadius: 7, background: theme === 'dark' ? T.white : 'transparent', border: 'none', cursor: 'pointer', display: 'flex', color: theme === 'dark' ? T.indigo : T.subtle }}><Moon size={14} /></button>
+        <div style={{display:'flex', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)'}}>
+          <button onClick={() => setTheme('light')} style={{ padding: '6px 12px', borderRadius: 8, background: theme === 'light' ? 'rgba(255,255,255,0.2)' : 'transparent', border: 'none', cursor: 'pointer', display: 'flex', color: 'white' }}><Sun size={15} /></button>
+          <button onClick={() => setTheme('dark')} style={{ padding: '6px 12px', borderRadius: 8, background: theme === 'dark' ? 'rgba(255,255,255,0.2)' : 'transparent', border: 'none', cursor: 'pointer', display: 'flex', color: 'white' }}><Moon size={15} /></button>
         </div>
 
         <div style={{height: 24, width: 1, background: T.border}} />
@@ -273,21 +295,40 @@ export default function App(){
         <div style={{display:'flex',gap:3,flexShrink:0}}>
           {availFw.map((f:string)=>{const fw=FW_META[f]||{name:f,color:T.indigo};const sel=framework===f;return(
             <Tooltip key={f} content={`Use ${fw.name} framework`}>
-              <button onClick={()=>setFramework(f)} style={{padding:'4px 9px',borderRadius:6,fontSize:10,fontWeight:sel?600:400,background:sel?fw.color+'22':T.surf,color:sel?fw.color:T.muted,border:`1.5px solid ${sel?fw.color:T.border}`,cursor:'pointer',transition:'all .12s',flexShrink:0}}>
+              <button 
+                onClick={()=>setFramework(f)} 
+                style={{
+                  padding:'4px 10px',borderRadius:8,fontSize:10,fontWeight:sel?800:500,
+                  background:sel?'rgba(255,255,255,1)':'rgba(255,255,255,0.1)',
+                  color:sel?T.indigo:'rgba(255,255,255,0.9)',
+                  border:`1px solid ${sel?'#fff':'rgba(255,255,255,0.2)'}`,
+                  cursor:'pointer',transition:'all .15s',flexShrink:0,
+                  boxShadow:sel?'0 2px 8px rgba(0,0,0,0.1)':'none'
+                }}
+              >
                 {fw.name}
               </button>
             </Tooltip>
           );})}
         </div>
 
-        <div style={{height: 24, width: 1, background: T.border}} />
+        <div style={{height: 24, width: 1, background: 'rgba(255,255,255,0.2)'}} />
 
         {/* View Toggles & Dropdown Config */}
         <div style={{display:'flex', alignItems:'center', gap: 10}}>
-          <div style={{display:'flex',background:T.surf,borderRadius:8,padding:3,gap:1.5,border:`1px solid ${T.border}`,flexShrink:0}}>
+          <div style={{display:'flex',background:'rgba(0,0,0,0.15)',borderRadius:10,padding:4,gap:2,border:'1px solid rgba(255,255,255,0.1)',flexShrink:0}}>
             {[['2d','⬡ 2D'],['3d','◳ 3D'],['train','▶ Train']].map(([k,l])=>(
               <Tooltip key={k} content={`Switch to ${l} view`}>
-                <button onClick={()=>setView(k as any)} style={{padding:'5px 10px',borderRadius:6,fontSize:10.5,fontWeight:500,background:view===k?T.white:'transparent',color:view===k?T.indigo:T.muted,border:`1px solid ${view===k?T.border:'transparent'}`,cursor:'pointer',transition:'all .12s',boxShadow:view===k?'0 1px 4px rgba(0,0,0,.07)':'none'}}>{l}</button>
+                <button 
+                  onClick={()=>setView(k as any)} 
+                  style={{
+                    padding:'5px 12px',borderRadius:7,fontSize:10.5,fontWeight:600,
+                    background:view===k?'#fff':'transparent',
+                    color:view===k?T.indigo:'rgba(255,255,255,0.8)',
+                    border:'none',cursor:'pointer',transition:'all .15s',
+                    boxShadow:view===k?'0 2px 6px rgba(0,0,0,0.1)':'none'
+                  }}
+                >{l}</button>
               </Tooltip>
             ))}
           </div>
@@ -299,28 +340,38 @@ export default function App(){
         {/* Right side stats */}
         {cur&&(
           <div style={{display:'flex',gap:6,flexShrink:0}}>
-            <Tooltip content="Current Loss"><Chip txt={`Loss ${cur.loss.toFixed(4)}`} col={T.orange}/></Tooltip>
-            <Tooltip content="Current Accuracy"><Chip txt={`Acc ${(cur.acc*100).toFixed(1)}%`} col={T.green}/></Tooltip>
+            <Tooltip content="Current Loss"><Chip txt={`Loss ${cur.loss.toFixed(4)}`} col="#fb923c"/></Tooltip>
+            <Tooltip content="Current Accuracy"><Chip txt={`Acc ${(cur.acc*100).toFixed(1)}%`} col="#34d399"/></Tooltip>
           </div>
         )}
-        <Tooltip content="Model Category"><Chip txt={model.cat} col={dlCol}/></Tooltip>
-        
-        {/* Sign In */}
-        <button onClick={() => user ? supabase.auth.signOut() : setAuthModalOpen(true)} style={{padding:'6px 12px',borderRadius:6,fontSize:11,fontWeight:600,background:user?T.surf2:T.indigo,color:user?T.text:T.white,border:'none',cursor:'pointer'}}>
-          {user ? 'Sign Out' : 'Sign In'}
-        </button>
+        <div style={{display:'flex', alignItems:'center', gap: 6, background: 'rgba(255,255,255,0.1)', padding: '5px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)'}}>
+          <Tooltip content="Model Category"><Chip txt={model.cat} col="white"/></Tooltip>
+          
+          <button 
+            onClick={() => user ? supabase.auth.signOut() : setAuthModalOpen(true)} 
+            style={{
+              padding:'6px 14px',borderRadius:8,fontSize:11,fontWeight:800,
+              background: user ? 'rgba(0,0,0,0.2)' : '#fff',
+              color: user ? '#fff' : T.indigo,
+              border:'none',cursor:'pointer', transition: 'all 0.2s',
+              boxShadow: user ? 'none' : '0 4px 12px rgba(0,0,0,0.15)'
+            }}
+          >
+            {user ? 'Sign Out' : 'Sign In'}
+          </button>
+        </div>
       </nav>
 
       {/* ── BODY ── */}
       <div style={{flex:1,display:'flex',overflow:'hidden'}}>
         
         {/* ── LEFT PANEL ── */}
-        <aside style={{width:sidebarWidth, position:'relative', flexShrink:0,background:T.white,borderRight:`1px solid ${T.border}`,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'3px 0 14px rgba(0,0,0,.04)', zIndex: 10}}>
+        <aside style={{width:sidebarWidth, position:'relative', flexShrink:0,background:'var(--grad-surface)',borderRight:`1px solid ${T.border}`,display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'3px 0 14px rgba(0,0,0,.04)', zIndex: 10}}>
           {activeModuleId === null ? (
             <div style={{flex:1, overflowY:'auto', padding: '24px 20px'}}>
-              <div style={{marginBottom: 24}}>
-                <div style={{fontSize: 22, fontWeight: 800, color: T.text, letterSpacing: '-0.02em'}}>Modules</div>
-                <div style={{fontSize: 12, color: T.muted, marginTop: 4}}>Select a module to view and interact</div>
+              <div style={{marginBottom: 32}}>
+                <div className="shimmer-text" style={{fontSize: 28, fontWeight: 900, color: T.text, letterSpacing: '-0.03em', background: 'linear-gradient(90deg, #4f46e5, #7c3aed, #ec4899, #4f46e5)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundSize: '200% auto'}}>Command Center</div>
+                <div style={{fontSize: 12, color: T.muted, marginTop: 4, fontWeight: 500}}>Select a neural intelligence module</div>
               </div>
               
               <div style={{display: 'flex', flexDirection: 'column', gap: 10}}>
