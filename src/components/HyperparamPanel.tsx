@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { T } from '../lib/utils';
 import { Tooltip } from './Tooltip';
+import { motion, AnimatePresence } from 'motion/react';
+import { Wand2 } from 'lucide-react';
 
 const MODEL_HP: any = {
   mlp:[{n:'Learning Rate',t:'log',min:-5,max:-2,default:-3},{n:'Hidden Layers',t:'int',min:1,max:8,default:3},{n:'Units/Layer',t:'int',min:16,max:512,default:128},{n:'Dropout',t:'float',min:0,max:0.7,default:0.3,step:0.05},{n:'Activation',t:'cat',opts:['GELU','ReLU','Tanh','SiLU'],default:'GELU'},{n:'Optimizer',t:'cat',opts:['AdamW','Adam','SGD+Mom','RMSProp'],default:'AdamW'},{n:'Weight Decay',t:'log',min:-5,max:-1,default:-4},{n:'Batch Size',t:'cat',opts:['16','32','64','128','256'],default:'64'}],
@@ -45,43 +47,101 @@ const HP_DESC: any = {
 export function HyperparamPanel({model,onApply}: any){
   const hp=MODEL_HP[model.key]||MODEL_HP.default;
   const [vals,setVals]=useState(()=>Object.fromEntries(hp.map((h:any)=>[h.n,h.default])));
+  const [isTuning, setIsTuning] = useState(false);
+
   useEffect(()=>{const h2=MODEL_HP[model.key]||MODEL_HP.default;setVals(Object.fromEntries(h2.map((h:any)=>[h.n,h.default])));},[model.key]);
   const hp2=MODEL_HP[model.key]||MODEL_HP.default;
+
+  const handleAutoTune = () => {
+    setIsTuning(true);
+    let step = 0;
+    const interval = setInterval(() => {
+      setVals((prev: any) => {
+        const next = { ...prev };
+        hp2.forEach((h: any) => {
+          if (h.t === 'cat') {
+            next[h.n] = h.opts[Math.floor(Math.random() * h.opts.length)];
+          } else {
+            const range = h.max - h.min;
+            const val = h.min + Math.random() * range;
+            next[h.n] = h.t === 'int' ? Math.round(val) : parseFloat(val.toFixed(2));
+          }
+        });
+        return next;
+      });
+      step++;
+      if (step > 15) {
+        clearInterval(interval);
+        setIsTuning(false);
+      }
+    }, 100);
+  };
+
   return(
     <div style={{display:'flex',flexDirection:'column',gap:12}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <div style={{fontSize:11,fontWeight:700,color:T.text2}}>Hyperparameter Configuration</div>
-        <button onClick={()=>onApply(vals)} style={{padding:'6px 14px',borderRadius:7,background:T.indigo,color:'#fff',border:'none',fontSize:11,fontWeight:600,cursor:'pointer',boxShadow:`0 2px 8px ${T.indigo}44`}}>▶ Apply & Simulate</button>
+        <div style={{display:'flex', gap: 6}}>
+          <button 
+            disabled={isTuning}
+            onClick={handleAutoTune} 
+            style={{display: 'flex', alignItems: 'center', gap: 4, padding:'6px 10px',borderRadius:7,background:'linear-gradient(45deg, #10b981, #14b8a6)',color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:isTuning?'wait':'pointer',boxShadow:`0 2px 8px rgba(16, 185, 129, 0.4)`}}
+          >
+            <Wand2 size={12} className={isTuning ? 'spin-anim' : ''}/> AI Auto-Tune
+          </button>
+          <button onClick={()=>onApply(vals)} style={{padding:'6px 14px',borderRadius:7,background:T.indigo,color:'#fff',border:'none',fontSize:11,fontWeight:600,cursor:'pointer',boxShadow:`0 2px 8px ${T.indigo}44`}}>▶ Apply & Simulate</button>
+        </div>
       </div>
-      {hp2.map((h:any)=>{
-        const v=vals[h.n]??h.default;
-        const display=h.t==='log'?`${Math.pow(10,v).toExponential(2)}`:v;
-        return(
-          <div key={h.n} style={{background:T.surf,borderRadius:8,padding:'10px 12px',border:`1px solid ${T.border}`}}>
-            <Tooltip content={HP_DESC[h.n] || `Adjust ${h.n}`} pos="top">
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6, width: '100%'}}>
-                <span style={{fontSize:11,fontWeight:600,color:T.text2, borderBottom: '1px dotted #cbd5e1', cursor: 'help'}}>{h.n}</span>
-                <span style={{fontSize:11,fontFamily:'JetBrains Mono',color:T.indigo,fontWeight:700}}>{display}</span>
-              </div>
-            </Tooltip>
-            {h.t==='cat'?(
-              <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-                {h.opts.map((o:any)=><button key={o} onClick={()=>setVals((p:any)=>({...p,[h.n]:o}))} style={{padding:'3px 9px',borderRadius:5,fontSize:10,cursor:'pointer',background:v===o?T.indigo:T.surf2,color:v===o?'#fff':T.muted,border:`1px solid ${v===o?T.indigo:T.border}`,fontFamily:'inherit',transition:'all .1s'}}>{o}</button>)}
-              </div>
-            ):(
-              <div>
-                <input type="range" min={h.min} max={h.max} step={h.step||h.t==='int'?1:(h.max-h.min)/50} value={v}
-                  onChange={e=>setVals((p:any)=>({...p,[h.n]:parseFloat(e.target.value)}))}
-                  style={{width:'100%',accentColor:T.indigo}}/>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:T.subtle,marginTop:2}}>
-                  <span>{h.t==='log'?Math.pow(10,h.min).toExponential(1):h.min}</span>
-                  <span>{h.t==='log'?Math.pow(10,h.max).toExponential(1):h.max}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
+      
+      <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+        <AnimatePresence>
+          {hp2.map((h:any, i: number)=>{
+            const v=vals[h.n]??h.default;
+            const display=h.t==='log'?`${Math.pow(10,v).toExponential(2)}`:v;
+            return(
+              <motion.div 
+                key={h.n} 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                style={{
+                  background: isTuning ? `${T.teal}11` : T.surf,
+                  borderRadius:8,padding:'10px 12px',
+                  border:`1px solid ${isTuning ? T.teal : T.border}`,
+                  transition: 'background 0.2s, border 0.2s'
+                }}
+              >
+                <Tooltip content={HP_DESC[h.n] || `Adjust ${h.n}`} pos="top">
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:8, width: '100%'}}>
+                    <span style={{fontSize:11,fontWeight:600,color:T.text2, borderBottom: '1px dotted #cbd5e1', cursor: 'help'}}>{h.n}</span>
+                    <span style={{
+                      fontSize:11,fontFamily:'JetBrains Mono',
+                      color: isTuning ? T.teal : T.indigo,
+                      fontWeight:700,
+                      textShadow: isTuning ? `0 0 8px ${T.teal}` : 'none'
+                    }}>{display}</span>
+                  </div>
+                </Tooltip>
+                {h.t==='cat'?(
+                  <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                    {h.opts.map((o:any)=><button key={o} onClick={()=>setVals((p:any)=>({...p,[h.n]:o}))} style={{padding:'4px 10px',borderRadius:6,fontSize:10,cursor:'pointer',background:v===o?T.indigo:T.surf2,color:v===o?'#fff':T.muted,border:`1px solid ${v===o?T.indigo:T.border}`,fontFamily:'inherit',transition:'all .2s'}}>{o}</button>)}
+                  </div>
+                ):(
+                  <div>
+                    <input type="range" min={h.min} max={h.max} step={h.step||h.t==='int'?1:(h.max-h.min)/50} value={v}
+                      onChange={e=>setVals((p:any)=>({...p,[h.n]:parseFloat(e.target.value)}))}
+                      style={{width:'100%',accentColor:T.indigo}}/>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:T.subtle,marginTop:2}}>
+                      <span>{h.t==='log'?Math.pow(10,h.min).toExponential(1):h.min}</span>
+                      <span>{h.t==='log'?Math.pow(10,h.max).toExponential(1):h.max}</span>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

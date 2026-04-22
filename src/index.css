@@ -65,6 +65,25 @@ body {
   100% { background-position: 0% 50%; }
 }
 
+@keyframes gradientPan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.grad-animate {
+  background-size: 200% 200%;
+  animation: gradientPan 15s ease infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.spin-anim {
+  animation: spin 1s linear infinite;
+}
+
 .shimmer-text {
   background-size: 200% auto;
   animation: textShimmer 4s linear infinite;

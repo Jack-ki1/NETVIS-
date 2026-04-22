@@ -86,6 +86,10 @@ function drawNeuralCanvas(ctx: CanvasRenderingContext2D, W: number, H: number, l
         const wSeed = rng(li*100+fi*10+ti);
         const w = wSeed() * 2 - 1;
         const wAbs = Math.abs(w);
+
+        // Threshold rendering for cleaner visuals
+        if (showActivations && activations && wAbs < 0.15) return;
+
         const wCol = w > 0 ? COLOR_POSITIVE : COLOR_NEGATIVE;
         const [r2,g2,b2] = hexToRgb(wCol);
 
@@ -152,7 +156,14 @@ function drawNeuralCanvas(ctx: CanvasRenderingContext2D, W: number, H: number, l
 
       if(showActivations) {
         const actGrad = ctx.createRadialGradient(pos.x-nR*.3,pos.y-nR*.3,0,pos.x,pos.y,nR);
-        const actColor = act > 0.5 ? col : '#334155';
+        // Map color to activation (e.g. from dark blue to coral for mnist style)
+        let actColor = col;
+        if (activations && activations[li]) {
+            const hAct = Math.max(0, activations[li][node.ni] || 0);
+            actColor = hAct > 0.05 ? `rgba(${Math.min(255, 60 + hAct*190)}, ${140 - hAct*80}, ${255 - hAct*200}, 1)` : '#1e293b';
+        } else {
+            actColor = act > 0.5 ? col : '#334155';
+        }
         actGrad.addColorStop(0, rgbA(actColor, 0.9));
         actGrad.addColorStop(1, rgbA(actColor, 0.6));
         ctx.fillStyle = actGrad;
@@ -249,7 +260,7 @@ function drawClassical(ctx: CanvasRenderingContext2D, W: number, H: number, vizT
   }
 }
 
-export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRotate, isDragging, setIsDragging, cam, setCam, passProgress, isNeural, vizType, isTraining }: any) {
+export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRotate, isDragging, setIsDragging, cam, setCam, passProgress, isNeural, vizType, isTraining, liveActivations }: any) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number | null>(null);
   const frameRef = useRef(0);
@@ -391,6 +402,7 @@ export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRot
           showActivations: vizOpts.showActivations,
           passProgress,
           isBackward: vizOpts.showBackward && !vizOpts.showForward,
+          activations: liveActivations
         });
       } else {
         drawClassical(ctx, W, H, vizType, f);
@@ -401,7 +413,7 @@ export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRot
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [model, selLayer, view, autoRotate, vizOpts, isNeural, vizType, passProgress, isDragging]);
+  }, [model, selLayer, view, autoRotate, vizOpts, isNeural, vizType, passProgress, isDragging, liveActivations]);
 
   return (
     <canvas

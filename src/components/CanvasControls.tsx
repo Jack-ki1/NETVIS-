@@ -45,7 +45,9 @@ export function CanvasControls({vizOpts,setVizOpts,view,setView,onAutoRotate,aut
           <Tooltip content="Auto-rotate the 3D camera">
             <button 
               onClick={onAutoRotate} 
-              style={{padding:'7px',borderRadius:8,background:autoRotate?T.teal:T.surf,color:autoRotate?'#fff':T.muted,border:`1px solid ${autoRotate?T.teal:T.border}`,cursor:'pointer',display:'flex'}}
+              onMouseOver={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              style={{padding:'7px',borderRadius:8,background:autoRotate?T.teal:T.surf,color:autoRotate?'#fff':T.muted,border:`1px solid ${autoRotate?T.teal:T.border}`,cursor:'pointer',display:'flex',transition:'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)'}}
             >
               <RotateCw size={14} />
             </button>
@@ -53,7 +55,9 @@ export function CanvasControls({vizOpts,setVizOpts,view,setView,onAutoRotate,aut
           <Tooltip content="Reset camera">
             <button 
               onClick={()=>setCam({rx:0.35,ry:-0.42,scale:0.82})} 
-              style={{padding:'7px',borderRadius:8,background:T.surf,color:T.muted,border:`1px solid ${T.border}`,cursor:'pointer',display:'flex'}}
+              onMouseOver={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              style={{padding:'7px',borderRadius:8,background:T.surf,color:T.muted,border:`1px solid ${T.border}`,cursor:'pointer',display:'flex',transition:'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)'}}
             >
               <Camera size={14} />
             </button>
@@ -65,10 +69,12 @@ export function CanvasControls({vizOpts,setVizOpts,view,setView,onAutoRotate,aut
       <div style={{ position: 'relative' }} ref={dropdownRef}>
         <button 
           onClick={() => setIsOpen(!isOpen)}
+          onMouseOver={(e) => { e.currentTarget.style.borderColor = T.indigo + '66'; e.currentTarget.style.transform = 'scale(1.02)'; }}
+          onMouseOut={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.transform = 'scale(1)'; }}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8,
             background: T.surf, border: `1px solid ${T.border}`, color: isOpen ? T.indigo : T.text2,
-            fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+            fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
           }}
         >
           <Settings2 size={14} />

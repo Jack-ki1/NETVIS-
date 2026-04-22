@@ -1,4 +1,10 @@
 export const MODELS = [
+  // Interactive Deep Learning
+  {key:'mnist',icon:'📝',label:'MNIST MLP',name:'Interactive Digit Recognizer',cat:'Deep Learning',sub:'Interactive',fw:['pytorch','tensorflow'],params:'50K',year:1989,
+   desc:'Interactive multi-layer perceptron. Draw on the input canvas to see real-time inference propagation and softmax probabilities through the network.',
+   layers:[{n:'Input (8x8)',t:'input',u:64,desc:'Drawn pixel grid'},{n:'Hidden 1',t:'dense',u:32,desc:'ReLU activations'},{n:'Hidden 2',t:'dense',u:16,desc:'ReLU activations'},{n:'Output',t:'output',u:10,desc:'Softmax 0-9 predictions'}],
+   use_cases:['Digit recognition','Interactive training intuition'],pros:['Real-time visual inference','Immediate feedback'],cons:['Toy representation of parameters']},
+
   // Deep Learning › Feedforward
   {key:'mlp',icon:'⬡',label:'MLP',name:'Multi-Layer Perceptron',cat:'Deep Learning',sub:'Feedforward',fw:['pytorch','tensorflow','jax','sklearn'],params:'3.2K',year:1986,
    desc:'Universal approximator via stacked affine+activation layers. Learns hierarchical non-linear feature representations through gradient descent.',

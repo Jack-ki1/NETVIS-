@@ -2,12 +2,22 @@ import React, { useState, useRef, useEffect } from 'react';
 import { T } from '../lib/utils';
 import { Upload, Edit3, Image as ImageIcon, Trash2, Save, Wand2 } from 'lucide-react';
 
-export function ModelingInputPanel() {
-  const [activeTool, setActiveTool] = useState<'upload' | 'draw' | 'image'>('upload');
+interface ModelingInputPanelProps {
+  modelKey?: string;
+  onDrawUpdate?: (pixels: number[]) => void;
+}
+
+export function ModelingInputPanel({ modelKey, onDrawUpdate }: ModelingInputPanelProps) {
+  const [activeTool, setActiveTool] = useState<'upload' | 'draw' | 'image'>('draw');
   const [files, setFiles] = useState<File[]>([]);
   const [drawingData, setDrawingData] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const isMnist = modelKey === 'mnist';
+
+  useEffect(() => {
+    if (isMnist) setActiveTool('draw');
+  }, [isMnist]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -15,7 +25,40 @@ export function ModelingInputPanel() {
     }
   };
 
+  const processMNISTGrid = () => {
+    if (!isMnist || !onDrawUpdate || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Scale down to 8x8 (64 pixels)
+    const size = 8;
+    const cw = canvas.width, ch = canvas.height;
+    const cellW = cw / size, cellH = ch / size;
+    const pixels = new Array(size * size).fill(0);
+    
+    const imgData = ctx.getImageData(0, 0, cw, ch).data;
+    // imgData is RGBA. We draw with black on white, or colored. Let's just check alpha/darkness
+    for(let y=0; y<ch; y++){
+      for(let x=0; x<cw; x++){
+        const i = (y * cw + x) * 4;
+        const a = imgData[i+3]; // Alpha
+        if (a > 0) {
+          const px = Math.floor(x / cellW);
+          const py = Math.floor(y / cellH);
+          pixels[py * size + px] = Math.min(1.0, pixels[py * size + px] + 0.15 * (a/255));
+        }
+      }
+    }
+    // Normalize slightly
+    for (let i = 0; i < pixels.length; i++) {
+        pixels[i] = Math.min(1, pixels[i] * 1.5);
+    }
+    onDrawUpdate(pixels);
+  };
+
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -27,10 +70,19 @@ export function ModelingInputPanel() {
 
     ctx.beginPath();
     ctx.moveTo(x, y);
+    ctx.lineTo(x+0.1, y+0.1); // Ensure dot draws if clicked
+    ctx.strokeStyle = T.indigo;
+    ctx.lineWidth = isMnist ? 20 : 2; // Thicker brush for MNIST
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
     setIsDrawing(true);
+    setDrawingData('drawn');
+    processMNISTGrid();
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -42,10 +94,8 @@ export function ModelingInputPanel() {
     const y = ('touches' in e) ? e.touches[0].clientY - rect.top : (e as React.MouseEvent).clientY - rect.top;
 
     ctx.lineTo(x, y);
-    ctx.strokeStyle = T.indigo;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
     ctx.stroke();
+    processMNISTGrid();
   };
 
   const stopDrawing = () => {
@@ -53,6 +103,7 @@ export function ModelingInputPanel() {
     if (canvasRef.current) {
       setDrawingData(canvasRef.current.toDataURL());
     }
+    processMNISTGrid();
   };
 
   const clearCanvas = () => {
@@ -62,6 +113,7 @@ export function ModelingInputPanel() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setDrawingData(null);
+    if(isMnist && onDrawUpdate) onDrawUpdate(new Array(64).fill(0));
   };
 
   return (
@@ -70,7 +122,7 @@ export function ModelingInputPanel() {
       <div style={{ display: 'flex', background: T.surf2, borderRadius: 10, padding: 4, gap: 4 }}>
         {[
           { id: 'upload' as const, label: 'Upload Data', icon: <Upload size={14} /> },
-          { id: 'draw' as const, label: 'Sketch Model', icon: <Edit3 size={14} /> },
+          { id: 'draw' as const, label: isMnist ? 'Draw Input' : 'Sketch Model', icon: <Edit3 size={14} /> },
           { id: 'image' as const, label: 'Dataset Images', icon: <ImageIcon size={14} /> },
         ].map(tool => (
           <button
@@ -94,16 +146,18 @@ export function ModelingInputPanel() {
       <div style={{ minHeight: 200 }}>
         {activeTool === 'upload' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <label style={{
+            <label htmlFor="data-file-upload" style={{
               border: `2px dashed ${T.border2}`, borderRadius: 12, padding: '32px 16px',
               textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', gap: 8, transition: 'all 0.2s'
-            }}>
-              <input type="file" multiple onChange={handleFileUpload} style={{ display: 'none' }} />
+              alignItems: 'center', gap: 8, transition: 'all 0.2s', background: T.surf
+            }}
+            onMouseOver={(e) => e.currentTarget.style.borderColor = T.indigo}
+            onMouseOut={(e) => e.currentTarget.style.borderColor = T.border2}>
+              <input id="data-file-upload" type="file" accept=".csv,.json,.jpg,.png" multiple onChange={handleFileUpload} style={{ display: 'none' }} />
               <div style={{ width: 40, height: 40, borderRadius: 20, background: T.indigo + '11', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.indigo }}>
                 <Upload size={20} />
               </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: T.text }}>Drop CSV, JSON or JPG here</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: T.text }}>Drop CSV, JSON or image file here</div>
               <div style={{ fontSize: 9, color: T.muted }}>Max file size: 50MB</div>
             </label>
 
@@ -152,13 +206,13 @@ export function ModelingInputPanel() {
               </div>
               {!drawingData && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', color: T.subtle, fontSize: 10 }}>
-                  Sketch architecture idea or data distribution...
+                  {isMnist ? 'Draw a digit (0-9) to see live inference...' : 'Sketch architecture idea or data distribution...'}
                 </div>
               )}
             </div>
             <div style={{ padding: '10px 12px', background: T.indigo + '08', border: `1px solid ${T.indigo}22`, borderRadius: 8, fontSize: 10, color: T.indigo, display: 'flex', gap: 8, alignItems: 'center' }}>
               <Wand2 size={14} />
-              <span>Sketch recognition AI will analyze this for structure.</span>
+              <span>{isMnist ? 'Pixel data is bound to MLP input layer. Real-time probabilities active.' : 'Sketch recognition AI will analyze this for structure.'}</span>
             </div>
           </div>
         )}

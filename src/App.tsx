@@ -34,7 +34,7 @@ const INIT_EXPS=[
 export default function App(){
   const [modelKey,setModelKey]=useState('mlp');
   const [framework,setFramework]=useState('pytorch');
-  const [view,setView]=useState('2d'); // '2d'|'3d'|'train'
+  const [view,setView]=useState('3d'); // '2d'|'3d'|'train'
   const [activeTab,setActiveTab]=useState('overview');
   const [isTraining,setIsTraining]=useState(false);
   const [epoch,setEpoch]=useState(0);
@@ -54,6 +54,8 @@ export default function App(){
   const [user, setUser] = useState<any>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+
+  const [mnistInput, setMnistInput] = useState<number[]|null>(null);
 
   const epochRef=useRef(0);
   const trainDataRef=useRef<any[]>([]);
@@ -88,7 +90,43 @@ export default function App(){
   const isNeural=!!(model.layers?.length);
   const vizType=model.viz||'neural';
 
-  const toast=(msg:string)=>{setNotify(msg);setTimeout(()=>setNotify(''),3000);};
+  // Real-time MNIST probability inference mock
+  const [mnistProbabilities, setMnistProbabilities] = useState<number[]>(new Array(10).fill(0.1));
+  useEffect(() => {
+    if (modelKey === 'mnist') {
+      if (!mnistInput) {
+          setMnistProbabilities(new Array(10).fill(0.1));
+          return;
+      }
+      // Deterministic pseudo-inference based on drawn pixels
+      let sum = 0;
+      const logits = new Array(10).fill(0).map((_, i) => {
+        let val = 0;
+        for (let j = 0; j < 64; j++) {
+            val += mnistInput[j] * ((Math.sin(i * 13 + j * 7) + 1) / 2); 
+        }
+        val = Math.exp(val * 0.5);
+        sum += val;
+        return val;
+      });
+      setMnistProbabilities(logits.map(v => v / sum));
+    }
+  }, [mnistInput, modelKey]);
+
+  const [terminalLogs, setTerminalLogs] = useState<string[]>(['[NETVIS] System initialized. Ready for operations.']);
+  const addLog = (msg: string) => {
+    setTerminalLogs(p => {
+      const ts = new Date().toISOString().substring(11, 19);
+      const n = [...p, `[${ts}] ${msg}`];
+      return n.length > 6 ? n.slice(n.length - 6) : n;
+    });
+  };
+
+  const toast=(msg:string)=>{
+    setNotify(msg);
+    addLog(msg.replace('✓ ', 'SUCCESS: ').replace('↻ ', 'EXEC: '));
+    setTimeout(()=>setNotify(''),3000);
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -105,8 +143,10 @@ export default function App(){
     epochRef.current=0;trainDataRef.current=[];
     fullDataRef.current=genTrainData(80,Math.random()*9999|0);
     setPassProgress(0);
+    setMnistInput(null);
+    setMnistProbabilities(new Array(10).fill(0.1));
     if(!availFw.includes(framework))setFramework(availFw[0]);
-  },[modelKey]);// eslint-disable-line
+  },[modelKey]);
 
   useEffect(()=>{
     if(!isTraining)return;
@@ -118,6 +158,7 @@ export default function App(){
           const newExp={id:Date.now(),model:modelKey,fw:framework,ep:80,loss:last.loss,acc:last.acc*100,vloss:last.vloss,vacc:last.vacc*100,ts:new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}),status:'done',note:'NETVIS simulation'};
           setExperiments(p=>[newExp,...p.slice(0,9)]);
           toast(`✓ Training complete — Val Acc: ${(last.vacc*100).toFixed(1)}%`);
+          addLog(`[System] Synced weights back. Total params evaluated.`);
         }
         return;
       }
@@ -125,14 +166,34 @@ export default function App(){
       trainDataRef.current=fullDataRef.current.slice(0,epochRef.current);
       setEpoch(epochRef.current);
       setTrainData([...trainDataRef.current]);
+
+      // Add cool simulated log streaming
+      if (epochRef.current % 10 === 0) {
+        const last=trainDataRef.current.at(-1);
+        addLog(`Epoch ${epochRef.current}/80 || Loss: ${last.loss.toFixed(4)} | Acc: ${(last.acc*100).toFixed(1)}% | Val: ${(last.vacc*100).toFixed(1)}%`);
+      }
+      if (epochRef.current === 5) addLog(`[CUDA] Allocating tensors for ${model.layers?.length || 'classical'} modules...`);
+      if (epochRef.current === 40) addLog(`[Monitor] Memory bound 1.2GB/16GB VRAM.`);
     },110);
     return()=>clearInterval(id);
-  },[isTraining]);// eslint-disable-line
+  },[isTraining]);
 
   const startTrain=()=>{
-    if(epoch>=80){setEpoch(0);setTrainData([]);epochRef.current=0;trainDataRef.current=[];fullDataRef.current=genTrainData(80,Math.random()*9999|0, hyperparams);}
+    if(epoch>=80){
+      setEpoch(0);
+      setTrainData([]);
+      epochRef.current=0;
+      trainDataRef.current=[];
+      fullDataRef.current=genTrainData(80,Math.random()*9999|0, hyperparams);
+      addLog(`[Env] Reset simulation buffers for new run.`);
+    }
     setIsTraining(p=>!p);
-    if(!isTraining)toast('▶ Training simulation started…');
+    if(!isTraining){
+      toast('▶ Training simulation started…');
+      addLog(`[Pipeline] Initializing DataLoaders... batch_size=64`);
+    } else {
+      addLog(`[Pipeline] Training halted by operator manually.`);
+    }
   };
 
   useEffect(() => {
@@ -183,14 +244,34 @@ export default function App(){
     { id: 'modeling', label: 'Modeling & Intelligence', icon: '🎨', component: (
       <div style={{display:'flex', flexDirection:'column', gap: 20}}>
         <OverviewTab model={model} framework={framework}/>
-        <ModelingInputPanel />
+        {modelKey === 'mnist' && (
+          <div style={{padding: 16, background: T.surf2, borderRadius: 12, border: `1px solid ${T.border}`}}>
+            <div style={{fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 12}}>Live Predictions</div>
+            <div style={{display: 'flex', gap: 8, height: 100, alignItems: 'flex-end'}}>
+              {mnistProbabilities.map((prob, i) => (
+                <div key={i} style={{flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4}}>
+                  <div style={{width: '100%', background: `rgba(99, 102, 241, ${prob})`, height: `${prob * 100}%`, borderRadius: '4px 4px 0 0', transition: 'height 0.2s, background 0.2s', minHeight: 4}} />
+                  <div style={{fontSize: 10, fontWeight: 700, color: T.muted}}>{i}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <ModelingInputPanel modelKey={modelKey} onDrawUpdate={(pixels) => {
+            setMnistInput(pixels);
+            // also trigger a forward pass visually if we want? Let's just do it
+            setPassProgress(0.1); 
+            setTimeout(() => setPassProgress(0.5), 100);
+            setTimeout(() => setPassProgress(1.0), 200);
+            setTimeout(() => setPassProgress(0), 400);
+        }} />
         <CreativeEngine />
       </div>
     ) },
     { id: 'architecture', label: 'Architecture & Theory', icon: '🥞', component: (
       <div style={{display:'flex', flexDirection:'column', gap: 20}}>
         <LayersTab model={model} selLayer={selLayer} setSelLayer={setSelLayer}/>
-        <CodePanel modelKey={modelKey} framework={framework}/>
+        <CodePanel modelKey={modelKey} framework={framework} selLayer={selLayer}/>
       </div>
     ) },
     { id: 'optimization', label: 'Hyperparams & Tuning', icon: '⚙️', component: <HyperparamPanel model={model} onApply={(hp: any)=>{
@@ -271,7 +352,7 @@ export default function App(){
       `}</style>
 
       {/* ── TOP NAV ── */}
-      <nav style={{background:'var(--grad-main)',padding:'0 20px',display:'flex',alignItems:'center',gap:16,height:58,flexShrink:0,boxShadow:'0 4px 20px rgba(0,0,0,.15)',zIndex:100}}>
+      <nav className="grad-animate" style={{background:'var(--grad-main)',padding:'0 20px',display:'flex',alignItems:'center',gap:16,height:58,flexShrink:0,boxShadow:'0 4px 20px rgba(0,0,0,.15)',zIndex:100}}>
         {/* Logo */}
         <div style={{display:'flex',alignItems:'center',gap:12,paddingRight:20,borderRight:'1px solid rgba(255,255,255,0.15)',flexShrink:0}}>
           <div style={{width:34,height:34,borderRadius:10,background:'rgba(255,255,255,0.15)',backdropFilter:'blur(10px)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,boxShadow:'0 4px 12px rgba(0,0,0,0.1)', color:'white', border: '1px solid rgba(255,255,255,0.2)'}}>◈</div>
@@ -464,10 +545,11 @@ export default function App(){
             isDragging={isDragging} setIsDragging={setIsDragging} 
             cam={cam} setCam={setCam} passProgress={passProgress} 
             isNeural={isNeural} vizType={vizType} isTraining={isTraining}
+            liveActivations={mnistInput ? [mnistInput] : undefined}
           />
 
           {/* Canvas HUD */}
-          <div style={{position:'absolute',top:12,left:12,display:'flex',flexDirection:'column',gap:6, pointerEvents: 'none'}}>
+          <div style={{position:'absolute',top:12,left:12,display:'flex',flexDirection:'column',gap:6, pointerEvents: 'none', zIndex: 20}}>
             <div style={{display:'flex',gap:6}}>
               <HudTag>{model.icon} {model.label} · {FW_META[framework]?.name||framework}</HudTag>
               {view==='3d'&&<HudTag col={T.teal}>3D · DRAG TO ORBIT · SCROLL TO ZOOM</HudTag>}
@@ -483,6 +565,21 @@ export default function App(){
               {vizOpts.showForward&&<HudTag col={T.indigo} sm>→ FWD</HudTag>}
               {vizOpts.showBackward&&<HudTag col={T.pink} sm>← BKWD</HudTag>}
             </div>
+          </div>
+
+          <div style={{
+            position: 'absolute', bottom: 12, left: 12, display: 'flex', flexDirection: 'column',
+            gap: 2, pointerEvents: 'none', zIndex: 20, width: '400px',
+            fontFamily: '"JetBrains Mono", monospace', fontSize: 9.5, opacity: 0.8
+          }}>
+            {terminalLogs.map((log, i) => (
+              <div key={i} style={{
+                color: log.includes('ERROR') ? T.red : log.includes('SUCCESS') ? T.emerald : T.sky,
+                textShadow: '0 1px 2px rgba(0,0,0,0.8)'
+              }}>
+                {log}
+              </div>
+            ))}
           </div>
 
           {/* Pass progress bar */}
@@ -538,7 +635,11 @@ export default function App(){
               </div>
               {Array.from({length:Math.min(selLayerData.u,8)},(_,i)=>{
                 const r2=rng(selLayer!*100+i);
-                const act=clamp(r2()*.8+.15,0,1);
+                let act=clamp(r2()*.8+.15,0,1);
+                if (mnistInput && selLayer === 0 && i < 8) {
+                    // Quick mock, just showing some first drawn values
+                    act = mnistInput[i] || 0;
+                }
                 const col=LC[selLayerData.t]||T.indigo;
                 return(
                   <div key={i} style={{marginBottom:5}}>

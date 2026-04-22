@@ -138,7 +138,7 @@ function getCode(key: string,fw: string){
   return pool[key]||pool[Object.keys(pool)[0]]||`# ${key} (${fw})\n# Add your code here\nmodel = build_${key}_model()\nmodel.fit(X_train, y_train)`;
 }
 
-export function CodePanel({modelKey,framework}: any){
+export function CodePanel({modelKey,framework,selLayer}: any){
   const [mode,setMode]=useState('generated');
   const [custom,setCustom]=useState('');
   const [flash,setFlash]=useState('');
@@ -152,6 +152,13 @@ export function CodePanel({modelKey,framework}: any){
   const AB=({icon,lbl,fn,col=T.indigo}: any)=>(
     <button onClick={fn} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:6,fontSize:10.5,fontWeight:500,background:col+'18',color:col,border:`1px solid ${col}33`,cursor:'pointer',fontFamily:'inherit',transition:'all .12s',whiteSpace:'nowrap'}}>{icon} {lbl}</button>
   );
+
+  const getLineHighlight = (line: string) => {
+    if (selLayer === null) return false;
+    const kw = ['nn.Linear', 'nn.Conv', 'Dense', 'nn.Embedding', 'TransformerEncoderLayer', 'self.enc', 'self.dec', 'RandomForestClassifier', 'DecisionTreeClassifier', 'xgb.train', 'KMeans', 'layers.append'];
+    return kw.some(k => line.includes(k));
+  };
+
   return(
     <div style={{display:'flex',flexDirection:'column',height:'100%',gap:8}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:6}}>
@@ -173,10 +180,30 @@ export function CodePanel({modelKey,framework}: any){
       )}
       <div style={{flex:1,position:'relative',minHeight:250}}>
         <div style={{position:'absolute',top:10,right:12,fontSize:9,color:'rgba(40,80,160,.45)',fontFamily:'JetBrains Mono',pointerEvents:'none',zIndex:1}}>{framework} · {modelKey}</div>
-        <textarea value={code} onChange={e=>{setCustom(e.target.value);setMode('custom');}} spellCheck={false}
-          style={{width:'100%',height:'100%',padding:'14px',fontFamily:'"JetBrains Mono",monospace',fontSize:11.5,lineHeight:1.85,background:'#070b1a',color:'#a8c8e8',border:`1px solid #162040`,borderRadius:8,resize:'none',outline:'none',boxSizing:'border-box',tabSize:4}}/>
+        {mode === 'custom' ? (
+          <textarea value={code} onChange={e=>{setCustom(e.target.value);setMode('custom');}} spellCheck={false}
+            style={{width:'100%',height:'100%',padding:'14px',fontFamily:'"JetBrains Mono",monospace',fontSize:11.5,lineHeight:1.85,background:'#070b1a',color:'#a8c8e8',border:`1px solid #162040`,borderRadius:8,resize:'none',outline:'none',boxSizing:'border-box',tabSize:4}}/>
+        ) : (
+          <div style={{width:'100%',height:'100%',padding:'14px 0',fontFamily:'"JetBrains Mono",monospace',fontSize:11.5,lineHeight:1.85,background:'#070b1a',color:'#a8c8e8',border:`1px solid #162040`,borderRadius:8,overflow:'auto',boxSizing:'border-box',tabSize:4}}>
+            {code.split('\n').map((line, i) => {
+              const hl = getLineHighlight(line);
+              return (
+                <div key={i} style={{
+                  padding: '0 14px',
+                  background: hl ? 'rgba(79, 70, 229, 0.25)' : 'transparent',
+                  borderLeft: hl ? `3px solid ${T.indigo}` : '3px solid transparent',
+                  transition: 'all 0.2s',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {line || ' '}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       <div style={{fontSize:9,color:T.subtle,textAlign:'right',fontFamily:'JetBrains Mono'}}>{code.split('\n').length} lines · {code.length} chars · {framework}</div>
     </div>
   );
 }
+
