@@ -1,38 +1,69 @@
 import { useState, useEffect } from 'react';
 import { T } from '../lib/utils';
-import { persistenceService, SavedModel } from '../lib/persistence';
+import { User } from '@supabase/supabase-js';
+import { SavedModel } from '../types';
+import { persistenceService } from '../services/persistence.service';
 import { Save, Trash2, Download, Play, ShieldCheck, Database } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 
-export function SavedModelsPanel({ user, currentConfig, onLoad }: any) {
+interface SavedModelsPanelProps {
+  user: User | null;
+  currentConfig: Omit<SavedModel, 'id' | 'timestamp' | 'name'>;
+  onLoad: (model: SavedModel) => void;
+}
+
+export function SavedModelsPanel({ user, currentConfig, onLoad }: SavedModelsPanelProps) {
   const [models, setModels] = useState<SavedModel[]>([]);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     refresh();
   }, [user]);
 
   const refresh = async () => {
-    const data = await persistenceService.loadModels(user);
-    setModels(data);
+    setLoadingFiles(true);
+    setErrorMsg('');
+    try {
+      const data = await persistenceService.loadModels(user);
+      setModels(data);
+    } catch (e: any) {
+      setErrorMsg('Failed to load saved models. Supabase may be unreachable.');
+    } finally {
+      setLoadingFiles(false);
+    }
   };
 
   const saveCurrent = async () => {
     if (!name.trim()) return;
     setLoading(true);
-    await persistenceService.saveModel({
-      name: name.trim(),
-      ...currentConfig
-    }, user);
-    setName('');
-    await refresh();
-    setLoading(false);
+    setErrorMsg('');
+    try {
+      await persistenceService.saveModel({
+        name: name.trim(),
+        ...currentConfig
+      }, user);
+      setName('');
+      await refresh();
+    } catch(e: any) {
+      setErrorMsg('Failed to save the model. Ensure cloud connection is active.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const deleteModel = async (id: string) => {
-    await persistenceService.deleteModel(id, user);
-    await refresh();
+    setLoadingFiles(true);
+    setErrorMsg('');
+    try {
+      await persistenceService.deleteModel(id, user);
+      await refresh();
+    } catch(e: any) {
+      setErrorMsg('Failed to delete the model.');
+      setLoadingFiles(false); // refresh would do this if successful
+    }
   };
 
   return (
@@ -69,7 +100,10 @@ export function SavedModelsPanel({ user, currentConfig, onLoad }: any) {
           </span>
         </div>
 
-        {models.map(m => (
+        {errorMsg && <div style={{ padding: '8px 12px', background: T.redL, color: T.red, borderRadius: 6, fontSize: 11 }}>{errorMsg}</div>}
+        {loadingFiles && <div style={{ fontSize: 11, color: T.subtle, textAlign: 'center', padding: '10px 0' }}>Thinking/Loading...</div>}
+
+        {!loadingFiles && models.map(m => (
           <div key={m.id} style={{ 
             padding: '12px', background: T.white, border: `1px solid ${T.border}`, borderRadius: 12,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'all 0.2s',

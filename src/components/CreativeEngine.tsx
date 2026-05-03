@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { T } from '../lib/utils';
 import { GoogleGenAI } from "@google/genai";
 import { Sparkles, Download, RefreshCw, Wand2, Image as ImageIcon } from 'lucide-react';
+import { GEMINI_MODEL_FLASH } from '../constants';
 
 export function CreativeEngine() {
   const [prompt, setPrompt] = useState('');
@@ -14,20 +15,20 @@ export function CreativeEngine() {
     setGenerating(true);
     setError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: (process.env as any).GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [{ text: prompt }]
-        }
+        model: "gemini-2.5-flash-image",
+        contents: prompt
       });
       
       let found = false;
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          setResult(`data:image/png;base64,${part.inlineData.data}`);
-          found = true;
-          break;
+      if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+            setResult(`data:image/png;base64,${part.inlineData.data}`);
+            found = true;
+            break;
+          }
         }
       }
       if (!found) throw new Error("No image data returned from model.");

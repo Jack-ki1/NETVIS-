@@ -1,16 +1,33 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { T } from '../lib/utils';
-import { MODELS } from '../lib/models';
+import { MODELS } from '../data/models';
 
-export function ModelDropdown({value,onChange}: any){
+import { Model } from '../schemas';
+
+interface ModelDropdownProps {
+  value: string;
+  onChange: (key: string) => void;
+}
+
+export function ModelDropdown({value, onChange}: ModelDropdownProps){
   const [open,setOpen]=useState(false);const [q,setQ]=useState('');const ref=useRef<HTMLDivElement>(null);
   const cur=MODELS.find(m=>m.key===value)||MODELS[0];
   const filtered=useMemo(()=>q?MODELS.filter(m=>[m.name,m.label,m.sub,m.cat].join(' ').toLowerCase().includes(q.toLowerCase())):MODELS,[q]);
-  const groups=useMemo(()=>{const g:any={};filtered.forEach(m=>{const k=`${m.cat} › ${m.sub}`;if(!g[k])g[k]=[];g[k].push(m);});return g;},[filtered]);
-  useEffect(()=>{const h=(e:any)=>{if(!ref.current?.contains(e.target))setOpen(false);};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);},[]);
+  const groups=useMemo(()=>{
+    const g: Record<string, Model[]> = {};
+    filtered.forEach(m=>{
+      const k=`${m.cat} › ${m.sub}`;
+      if(!g[k])g[k]=[];
+      g[k].push(m);
+    });
+    return g;
+  },[filtered]);
+  useEffect(()=>{const h=(e: MouseEvent)=>{if(!ref.current?.contains(e.target as Node))setOpen(false);};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);},[]);
   return(
     <div ref={ref} style={{position:'relative',zIndex:400}}>
       <button 
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={()=>setOpen(p=>!p)} 
         onMouseOver={(e) => { e.currentTarget.style.borderColor = T.indigo; e.currentTarget.style.backgroundColor = T.surf; }}
         onMouseOut={(e) => { e.currentTarget.style.borderColor = open ? T.indigo : T.border2; e.currentTarget.style.backgroundColor = T.white; }}
@@ -21,7 +38,7 @@ export function ModelDropdown({value,onChange}: any){
         <svg width="9" height="9" viewBox="0 0 9 9" style={{transform:open?'rotate(180deg)':'none',transition:'transform .2s',flexShrink:0}}><path d="M1 2.5l3.5 4 3.5-4" stroke={T.muted} strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>
       </button>
       {open&&(
-        <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,width:320,background:T.white,border:`1.5px solid ${T.border}`,borderRadius:12,boxShadow:'0 20px 60px rgba(0,0,0,.16)',maxHeight:440,overflow:'hidden',display:'flex',flexDirection:'column',animation:'popIn .15s'}}>
+        <div role="listbox" style={{position:'absolute',top:'calc(100% + 6px)',left:0,width:320,background:T.white,border:`1.5px solid ${T.border}`,borderRadius:12,boxShadow:'0 20px 60px rgba(0,0,0,.16)',maxHeight:440,overflow:'hidden',display:'flex',flexDirection:'column',animation:'popIn .15s'}}>
           <div style={{padding:'10px 12px',borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
             <div style={{display:'flex',alignItems:'center',gap:7,padding:'7px 10px',background:T.surf,borderRadius:7,border:`1px solid ${T.border}`}}>
               <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="5" cy="5" r="3.5" stroke={T.subtle} strokeWidth="1.4" fill="none"/><line x1="8" y1="8" x2="11" y2="11" stroke={T.subtle} strokeWidth="1.4" strokeLinecap="round"/></svg>
@@ -31,12 +48,14 @@ export function ModelDropdown({value,onChange}: any){
           </div>
           <div style={{overflowY:'auto',flex:1}}>
             {!Object.keys(groups).length&&<div style={{padding:24,textAlign:'center',color:T.muted,fontSize:12}}>No results for "{q}"</div>}
-            {Object.entries(groups).map(([grp,ms]: any)=>(
+            {Object.entries(groups).map(([grp,ms])=>(
               <div key={grp}>
                 <div style={{padding:'5px 14px 3px',fontSize:9,fontWeight:700,color:T.subtle,letterSpacing:'.09em',background:T.surf2,textTransform:'uppercase',position:'sticky',top:0}}>{grp}</div>
-                {ms.map((m:any)=>(
+                {ms.map((m: Model)=>(
                   <button 
-                    key={m.key} 
+                    key={m.key}
+                    role="option"
+                    aria-selected={m.key===value}
                     onClick={()=>{onChange(m.key);setOpen(false);setQ('');}} 
                     onMouseOver={(e) => { if(m.key!==value) e.currentTarget.style.backgroundColor = T.surf2; }}
                     onMouseOut={(e) => { if(m.key!==value) e.currentTarget.style.backgroundColor = 'transparent'; }}

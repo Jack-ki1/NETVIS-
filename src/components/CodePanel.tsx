@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { T } from '../lib/utils';
-import { MODELS } from '../lib/models';
+import { MODELS } from '../data/models';
 
-const SNIPPETS: any ={pytorch:{mlp:`import torch, torch.nn as nn, torch.optim as optim
+const SNIPPETS: Record<string, Record<string, string>> ={pytorch:{mlp:`import torch, torch.nn as nn, torch.optim as optim
 
 class MLP(nn.Module):
     def __init__(self, in_d=4, hidden=[128,64,32], out_d=3):
@@ -139,7 +139,13 @@ function getCode(key: string,fw: string){
   return pool[key]||pool[Object.keys(pool)[0]]||`# ${key} (${fw})\n# Add your code here\nmodel = build_${key}_model()\nmodel.fit(X_train, y_train)`;
 }
 
-export function CodePanel({modelKey,framework,selLayer}: any){
+interface CodePanelProps {
+  modelKey: string;
+  framework: string;
+  selLayer: number | null;
+}
+
+export function CodePanel({modelKey, framework, selLayer}: CodePanelProps){
   const [mode,setMode]=useState('generated');
   const [custom,setCustom]=useState('');
   const [flash,setFlash]=useState('');
@@ -150,13 +156,19 @@ export function CodePanel({modelKey,framework,selLayer}: any){
   const copy=async()=>{await navigator.clipboard.writeText(code);msg('✓ Copied to clipboard');};
   const dl=()=>{const b=new Blob([code],{type:'text/plain'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`${modelKey}_${framework}.py`;a.click();URL.revokeObjectURL(u);msg('✓ Downloaded');};
   const reset=()=>{setCustom('');setMode('generated');msg('↺ Restored generated');};
-  const AB=({icon,lbl,fn,col=T.indigo}: any)=>(
+  interface ABProps {
+    icon: string;
+    lbl: string;
+    fn: () => void;
+    col?: string;
+  }
+  const AB=({icon,lbl,fn,col=T.indigo}: ABProps)=>(
     <button onClick={fn} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:6,fontSize:10.5,fontWeight:500,background:col+'18',color:col,border:`1px solid ${col}33`,cursor:'pointer',fontFamily:'inherit',transition:'all .12s',whiteSpace:'nowrap'}}>{icon} {lbl}</button>
   );
 
   const getLineHighlight = (line: string) => {
     if (selLayer === null) return false;
-    const model = MODELS[modelKey];
+    const model = MODELS.find(m => m.key === modelKey);
     if (!model || !model.layers || !model.layers[selLayer]) return false;
     
     const layerType = model.layers[selLayer].t;
@@ -206,9 +218,9 @@ export function CodePanel({modelKey,framework,selLayer}: any){
         <div style={{position:'absolute',top:10,right:12,fontSize:9,color:'rgba(40,80,160,.45)',fontFamily:'JetBrains Mono',pointerEvents:'none',zIndex:1}}>{framework} · {modelKey}</div>
         {mode === 'custom' ? (
           <textarea value={code} onChange={e=>{setCustom(e.target.value);setMode('custom');}} spellCheck={false}
-            style={{width:'100%',height:'100%',padding:'14px',fontFamily:'"JetBrains Mono",monospace',fontSize:11.5,lineHeight:1.85,background:'#070b1a',color:'#a8c8e8',border:`1px solid #162040`,borderRadius:8,resize:'none',outline:'none',boxSizing:'border-box',tabSize:4}}/>
+            style={{width:'100%',height:'100%',padding:'14px',fontFamily:'"JetBrains Mono",monospace',fontSize:11.5,lineHeight:1.85,background:T.canvasBg,color:T.text,border:`1px solid ${T.border}`,borderRadius:8,resize:'none',outline:'none',boxSizing:'border-box',tabSize:4}}/>
         ) : (
-          <div style={{width:'100%',height:'100%',padding:'14px 0',fontFamily:'"JetBrains Mono",monospace',fontSize:11.5,lineHeight:1.85,background:'#070b1a',color:'#a8c8e8',border:`1px solid #162040`,borderRadius:8,overflow:'auto',boxSizing:'border-box',tabSize:4}}>
+          <div style={{width:'100%',height:'100%',padding:'14px 0',fontFamily:'"JetBrains Mono",monospace',fontSize:11.5,lineHeight:1.85,background:T.canvasBg,color:T.text,border:`1px solid ${T.border}`,borderRadius:8,overflow:'auto',boxSizing:'border-box',tabSize:4}}>
             {code.split('\n').map((line, i) => {
               const hl = getLineHighlight(line);
               return (

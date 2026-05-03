@@ -21,7 +21,19 @@ export function ModelingInputPanel({ modelKey, onDrawUpdate }: ModelingInputPane
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+      const allowedTypes = ['text/csv', 'application/json', 'image/jpeg', 'image/png'];
+      const validFiles = Array.from(e.target.files).filter(file => {
+        if (!allowedTypes.includes(file.type)) {
+          alert(`Invalid file type: ${file.name}. Only CSV, JSON, JPG, PNG allowed.`);
+          return false;
+        }
+        if (file.size > 50 * 1024 * 1024) {
+          alert(`File too large: ${file.name}. Max 50MB.`);
+          return false;
+        }
+        return true;
+      });
+      setFiles(prev => [...prev, ...validFiles]);
     }
   };
 
@@ -34,8 +46,13 @@ export function ModelingInputPanel({ modelKey, onDrawUpdate }: ModelingInputPane
     // Scale down to 28x28 for true MNIST inference
     const size = 28;
     const cw = canvas.width, ch = canvas.height;
+    
+    // BOUNDS CHECK: Ensure canvas dimensions are reasonable
+    if (cw <= 0 || ch <= 0) return;
+
     const cellW = cw / size, cellH = ch / size;
-    const pixels = new Array(size * size).fill(0);
+    const expectedLength = size * size; // 784
+    const pixels = new Array(expectedLength).fill(0);
     
     const imgData = ctx.getImageData(0, 0, cw, ch).data;
     // imgData is RGBA. We draw with black on white, or colored. Let's just check alpha/darkness
@@ -46,7 +63,14 @@ export function ModelingInputPanel({ modelKey, onDrawUpdate }: ModelingInputPane
         if (a > 0) {
           const px = Math.floor(x / cellW);
           const py = Math.floor(y / cellH);
-          pixels[py * size + px] = Math.min(1.0, pixels[py * size + px] + 0.15 * (a/255));
+          
+          // BOUNDS CHECK: Ensure px/py are within expected grid
+          if (px >= 0 && px < size && py >= 0 && py < size) {
+            const pixelIdx = py * size + px;
+            if (pixelIdx < expectedLength) {
+              pixels[pixelIdx] = Math.min(1.0, pixels[pixelIdx] + 0.15 * (a/255));
+            }
+          }
         }
       }
     }
@@ -54,7 +78,11 @@ export function ModelingInputPanel({ modelKey, onDrawUpdate }: ModelingInputPane
     for (let i = 0; i < pixels.length; i++) {
         pixels[i] = Math.min(1, pixels[i] * 1.5);
     }
-    onDrawUpdate(pixels);
+    
+    // FINAL VALIDATION: Ensure array is exactly 784 before passing to inference
+    if (pixels.length === 784) {
+      onDrawUpdate(pixels);
+    }
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -245,8 +273,8 @@ export function ModelingInputPanel({ modelKey, onDrawUpdate }: ModelingInputPane
 
       <button 
         onClick={() => {
-          if (activeTool === 'upload' && uploadedFiles.length > 0) {
-            alert(`Parsed ${uploadedFiles.length} files. Data mapped to input pipeline.`);
+          if (activeTool === 'upload' && files.length > 0) {
+            alert(`Parsed ${files.length} files. Data mapped to input pipeline.`);
           } else if (activeTool === 'draw') {
              if (isMnist) {
                  alert('Live digit inference is already active.');

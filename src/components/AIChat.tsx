@@ -2,9 +2,25 @@ import { useState, useRef, useEffect } from 'react';
 import Markdown from 'react-markdown';
 import { askNetvisAI } from '../lib/gemini';
 
-export function AIChat({ model, framework, epoch, isOpen, onClose, onApplyHyperparams }: any) {
-  const [messages, setMessages] = useState<any[]>([
-    { role: 'model', content: `Hi! I'm NETVIS AI. I can help explain the **${model.name}** architecture, how it's implemented in **${framework}**, or suggest hyperparameter tuning strategies. What would you like to know?` }
+import { Model } from '../schemas';
+import { Message, HyperparamValue } from '../types';
+
+interface AIChatProps {
+  model: Model;
+  framework: string;
+  epoch: number;
+  isOpen: boolean;
+  onClose: () => void;
+  onApplyHyperparams: (hp: Record<string, HyperparamValue>) => void;
+}
+
+interface ChatMessage extends Message {
+  suggestedParams?: Record<string, HyperparamValue> | null;
+}
+
+export function AIChat({ model, framework, epoch, isOpen, onClose, onApplyHyperparams }: AIChatProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: 'assistant', content: `Hi! I'm NETVIS AI. I can help explain the **${model.name}** architecture, how it's implemented in **${framework}**, or suggest hyperparameter tuning strategies. What would you like to know?` }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,26 +38,29 @@ export function AIChat({ model, framework, epoch, isOpen, onClose, onApplyHyperp
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setLoading(true);
 
-    const responseText = await askNetvisAI(userMsg, model.name, framework, epoch, messages);
-    
-    // Check for JSON hyperparams
-    let cleanText = responseText;
-    let suggestedParams = null;
-    const jsonMatch = responseText.match(/\`\`\`json\n([\s\S]*?)\n\`\`\`/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[1]);
-        if (parsed.suggested_hyperparams) {
-          suggestedParams = parsed.suggested_hyperparams;
-          cleanText = responseText.replace(jsonMatch[0], '').trim();
+    try {
+      const responseText = await askNetvisAI(userMsg, model.name, framework, epoch, messages);
+      
+      // Check for JSON hyperparams
+      let cleanText = responseText;
+      let suggestedParams = null;
+      const jsonMatch = responseText.match(/\`\`\`json\n([\s\S]*?)\n\`\`\`/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1]);
+          if (parsed.suggested_hyperparams) {
+            suggestedParams = parsed.suggested_hyperparams;
+            cleanText = responseText.replace(jsonMatch[0], '').trim();
+          }
+        } catch (e) {
+          // ignore JSON parse error
         }
-      } catch (e) {
-        // ignore JSON parse error
       }
-    }
 
-    setMessages(prev => [...prev, { role: 'model', content: cleanText, suggestedParams }]);
-    setLoading(false);
+      setMessages(prev => [...prev, { role: 'assistant', content: cleanText, suggestedParams }]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -69,7 +88,7 @@ export function AIChat({ model, framework, epoch, isOpen, onClose, onApplyHyperp
               color: m.role === 'user' ? 'white' : 'var(--text2)',
               padding: '10px 14px', borderRadius: 12, fontSize: 13, lineHeight: 1.6,
               borderBottomRightRadius: m.role === 'user' ? 2 : 12,
-              borderBottomLeftRadius: m.role === 'model' ? 2 : 12,
+              borderBottomLeftRadius: m.role === 'assistant' ? 2 : 12,
             }}>
               <div className="markdown-body" style={{ color: 'inherit', fontSize: 'inherit' }}>
                 <Markdown>{m.content}</Markdown>
@@ -83,7 +102,7 @@ export function AIChat({ model, framework, epoch, isOpen, onClose, onApplyHyperp
                     <span>{k}</span><span style={{ fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{String(v)}</span>
                   </div>
                 ))}
-                <button onClick={() => onApplyHyperparams(m.suggestedParams)} style={{ marginTop: 8, width: '100%', padding: '4px 0', background: '#4f46e5', color: 'white', border: 'none', borderRadius: 4, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Apply to Simulation</button>
+                <button onClick={() => m.suggestedParams && onApplyHyperparams(m.suggestedParams)} style={{ marginTop: 8, width: '100%', padding: '4px 0', background: '#4f46e5', color: 'white', border: 'none', borderRadius: 4, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Apply to Simulation</button>
               </div>
             )}
           </div>

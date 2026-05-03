@@ -1,8 +1,32 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { T, LC, rng, clamp, hexToRgb, rgbA } from '../lib/utils';
+import { 
+  CANVAS_PAD_X, CANVAS_PAD_Y, NODE_SPACING_MIN, 
+  PARTICLE_BASE_SPEED, PARTICLE_RANDOM_SPEED, PARTICLE_CAP 
+} from '../constants';
+import { CanvasCamera, VizOptions, Particle } from '../types';
+import { Model, Layer } from '../schemas';
+
+interface CanvasVizProps {
+  model: Model;
+  selLayer: number | null;
+  setSelLayer: (li: number | null | ((p: number | null) => number | null)) => void;
+  view: string;
+  vizOpts: VizOptions;
+  autoRotate: boolean;
+  isDragging: boolean;
+  setIsDragging: (val: boolean) => void;
+  cam: CanvasCamera;
+  setCam: (cam: CanvasCamera) => void;
+  passProgress: number;
+  isNeural: boolean;
+  vizType: string;
+  isTraining: boolean;
+  liveActivations?: number[][];
+}
 
 // Project a 3D point (x, y, z) to 2D with camera angles
-function project3D(x: number, y: number, z: number, W: number, H: number, cam: any) {
+function project3D(x: number, y: number, z: number, W: number, H: number, cam: CanvasCamera) {
   const {rx=0.35, ry=-0.42, scale=1} = cam;
   const cosY = Math.cos(ry), sinY = Math.sin(ry);
   const x1 = x * cosY + z * sinY, z1 = -x * sinY + z * cosY;
@@ -14,57 +38,60 @@ function project3D(x: number, y: number, z: number, W: number, H: number, cam: a
   return {px, py, depth: z2};
 }
 
-const COLOR_POSITIVE = '#38bdf8';
-const COLOR_NEGATIVE = '#f472b6';
+// Colors are now passed via theme
 
-function drawNeuralCanvas(ctx: CanvasRenderingContext2D, W: number, H: number, layers: any[], opts: any) {
+interface DrawOptions {
+  frame: number;
+  selLayer: number | null;
+  view: string;
+  cam: CanvasCamera;
+  activations: number[][] | null | undefined;
+  particles: Particle[];
+  showWeights: boolean;
+  showActivations: boolean;
+  passProgress: number;
+  isBackward: boolean;
+  theme: any;
+}
+
+function drawNeuralCanvas(ctx: CanvasRenderingContext2D, W: number, H: number, layers: Layer[], layout: any[], opts: DrawOptions, gridCache?: HTMLCanvasElement) {
   const {
     frame=0, selLayer=null,
     view='2d', cam={rx:0.35,ry:-0.42,scale:0.85},
     activations=null,
     particles=[], showWeights=true, showActivations=true,
-    passProgress=0, isBackward=false,
+    passProgress=0, isBackward=false, theme
   } = opts;
 
   ctx.clearRect(0, 0, W, H);
   const bgGrad = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W,H)*0.75);
-  bgGrad.addColorStop(0, '#0a1128');
-  bgGrad.addColorStop(1, '#060b18');
+  bgGrad.addColorStop(0, theme.bg0);
+  bgGrad.addColorStop(1, theme.bg1);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
 
-  ctx.save();
-  ctx.strokeStyle = T.canvasGrid;
-  ctx.lineWidth = .4;
-  for(let x=0;x<W;x+=32){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<H;y+=32){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  ctx.restore();
+  if (gridCache) {
+    ctx.drawImage(gridCache, 0, 0);
+  }
 
   if (!layers?.length) {
-    ctx.fillStyle = 'rgba(150,180,240,.4)';
+    ctx.fillStyle = theme.text;
     ctx.font = '13px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('Select a neural network model to visualize', W/2, H/2);
     return;
   }
 
-  const padX = 70, padY = 55;
-  const lw = layers.length > 1 ? (W - padX*2)/(layers.length-1) : 0;
   const r = rng(42);
 
-  const layout = layers.map((layer, li) => {
-    const x = padX + li * lw;
-    const ng = Math.min(44, (H - padY*2)/Math.max(layer.u,1));
-    const sy = H/2 - ng*(layer.u-1)/2;
-    const nodes = Array.from({length: layer.u}, (_, ni) => {
-      const baseAct = activations?.[li]?.[ni] ?? (r()*0.8+0.1);
-      return {
-        x2d: x, y2d: sy + ni*ng,
-        x3d: x - W/2, y3d: sy + ni*ng - H/2, z3d: li*28,
-        act: baseAct, ni, li,
-      };
-    });
-    return {layer, li, x, ng, nodes};
+  const layoutWithActs = layout.map((l, li) => {
+    return {
+      ...l,
+      nodes: l.nodes.map((node: any, ni: number) => ({
+        ...node,
+        act: activations?.[li]?.[ni] ?? (r()*0.8+0.1)
+      }))
+    };
   });
 
   function getPos(node: any) {
@@ -75,13 +102,13 @@ function drawNeuralCanvas(ctx: CanvasRenderingContext2D, W: number, H: number, l
     return {x: node.x2d, y: node.y2d, depth: 0};
   }
 
-  for (let li = 0; li < layout.length-1; li++) {
-    const from = layout[li], to = layout[li+1];
-    const passActive = passProgress > li/(layout.length-1);
-    const backActive = isBackward && passProgress > (layout.length-2-li)/(layout.length-1);
+  for (let li = 0; li < layoutWithActs.length-1; li++) {
+    const from = layoutWithActs[li], to = layoutWithActs[li+1];
+    const passActive = passProgress > li/(layoutWithActs.length-1);
+    const backActive = isBackward && passProgress > (layoutWithActs.length-2-li)/(layoutWithActs.length-1);
 
-    from.nodes.forEach((fn, fi) => {
-      to.nodes.forEach((tn, ti) => {
+    from.nodes.forEach((fn: any, fi: number) => {
+      to.nodes.forEach((tn: any, ti: number) => {
         const fp = getPos(fn), tp = getPos(tn);
         const wSeed = rng(li*100+fi*10+ti);
         const w = wSeed() * 2 - 1;
@@ -90,7 +117,7 @@ function drawNeuralCanvas(ctx: CanvasRenderingContext2D, W: number, H: number, l
         // Threshold rendering for cleaner visuals
         if (showActivations && activations && wAbs < 0.15) return;
 
-        const wCol = w > 0 ? COLOR_POSITIVE : COLOR_NEGATIVE;
+        const wCol = w > 0 ? theme.pos : theme.neg;
         const [r2,g2,b2] = hexToRgb(wCol);
 
         let alpha = showWeights ? 0.04 + wAbs*0.09 : 0.04;
@@ -107,8 +134,8 @@ function drawNeuralCanvas(ctx: CanvasRenderingContext2D, W: number, H: number, l
     });
   }
 
-  particles.forEach((p: any) => {
-    const fromL = layout[p.li], toL = layout[p.li+1];
+  particles.forEach((p: Particle) => {
+    const fromL = layoutWithActs[p.li], toL = layoutWithActs[p.li+1];
     if (!fromL || !toL) return;
     const fn = fromL.nodes[p.fi], tn = toL.nodes[p.ti];
     if (!fn || !tn) return;
@@ -134,13 +161,13 @@ function drawNeuralCanvas(ctx: CanvasRenderingContext2D, W: number, H: number, l
     ctx.fillStyle = col; ctx.fill();
   });
 
-  layout.forEach(({layer, li, nodes}) => {
+  layoutWithActs.forEach(({layer, li, nodes}) => {
     const sel = selLayer === li;
     const col = LC[layer.t] || '#60a5fa';
     const [cr,cg,cb] = hexToRgb(col);
-    const passThrough = passProgress > li/(layout.length-1);
+    const passThrough = passProgress > li/(layoutWithActs.length-1);
 
-    nodes.forEach(node => {
+    nodes.forEach((node: any) => {
       const pos = getPos(node);
       const act = showActivations ? node.act : 0.5;
       const glowR = (sel ? 22 : 10) + act * (frame%60/60)*3;
@@ -260,20 +287,68 @@ function drawClassical(ctx: CanvasRenderingContext2D, W: number, H: number, vizT
   }
 }
 
-export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRotate, isDragging, setIsDragging, cam, setCam, passProgress, isNeural, vizType, isTraining, liveActivations }: any) {
+export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRotate, isDragging, setIsDragging, cam, setCam, passProgress, isNeural, vizType, isTraining, liveActivations }: CanvasVizProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gridCanvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number | null>(null);
   const frameRef = useRef(0);
-  const particlesRef = useRef<any[]>([]);
-  const dragStart = useRef<any>(null);
+  const particlesRef = useRef<Particle[]>([]);
+  const dragStart = useRef<{ x: number, y: number, cam: CanvasCamera } | null>(null);
   const dragMoved = useRef(false);
+  const lastState = useRef<string>('');
 
   const camRef = useRef({ ...cam });
 
-  // Sync prop to ref when prop changes (e.g. from Reset Cam)
+  // Memoized layout - only recompute when model, view, or canvas size changes
+  const layout = useMemo(() => {
+    if (!isNeural || !model.layers || !canvasRef.current) return [];
+    const W = canvasRef.current.width, H = canvasRef.current.height;
+    const layers = model.layers;
+    const padX = CANVAS_PAD_X, padY = CANVAS_PAD_Y;
+    const lw = layers.length > 1 ? (W - padX * 2) / (layers.length - 1) : 0;
+    
+    return layers.map((layer, li) => {
+      const x = padX + li * lw;
+      const u = layer.u || 1;
+      const ng = Math.min(NODE_SPACING_MIN, (H - padY * 2) / Math.max(u, 1));
+      const sy = H / 2 - ng * (u - 1) / 2;
+      const nodes = Array.from({ length: u }, (_, ni) => ({
+        x2d: x, y2d: sy + ni * ng,
+        x3d: x - W / 2, y3d: sy + ni * ng - H / 2, z3d: li * 28,
+        ni, li
+      }));
+      return { layer, li, x, ng, nodes };
+    });
+  }, [model, isNeural, canvasRef.current?.width, canvasRef.current?.height]);
+
   useEffect(() => {
     camRef.current = { ...cam };
   }, [cam]);
+
+  const themeCacheRef = useRef<any>({
+    bg0: '#0a1128',
+    bg1: '#060b18',
+    text: 'rgba(150,180,240,0.4)',
+    pos: '#38bdf8',
+    neg: '#f472b6',
+  });
+
+  useEffect(() => {
+    const updateTheme = () => {
+      const sty = getComputedStyle(document.body);
+      themeCacheRef.current = {
+        bg0: sty.getPropertyValue('--cvz-bg0').trim() || '#f8fafc',
+        bg1: sty.getPropertyValue('--cvz-bg1').trim() || '#e2e8f0',
+        text: sty.getPropertyValue('--cvz-text').trim() || '#94a3b8',
+        pos: sty.getPropertyValue('--cvz-pos').trim() || '#0ea5e9',
+        neg: sty.getPropertyValue('--cvz-neg').trim() || '#ec4899',
+      };
+    };
+    updateTheme();
+    const mo = new MutationObserver(updateTheme);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => mo.disconnect();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -283,22 +358,39 @@ export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRot
       if (p) {
         canvas.width = p.clientWidth;
         canvas.height = p.clientHeight;
+        if (gridCanvasRef.current) {
+          gridCanvasRef.current.width = p.clientWidth;
+          gridCanvasRef.current.height = p.clientHeight;
+          drawGrid(gridCanvasRef.current);
+        }
       }
     };
+    
+    function drawGrid(c: HTMLCanvasElement) {
+      const gctx = c.getContext('2d');
+      if (!gctx) return;
+      const W = c.width, H = c.height;
+      gctx.clearRect(0, 0, W, H);
+      gctx.strokeStyle = T.canvasGrid;
+      gctx.lineWidth = 0.4;
+      for (let x = 0; x < W; x += 32) { gctx.beginPath(); gctx.moveTo(x, 0); gctx.lineTo(x, H); gctx.stroke(); }
+      for (let y = 0; y < H; y += 32) { gctx.beginPath(); gctx.moveTo(0, y); gctx.lineTo(W, y); gctx.stroke(); }
+    }
+
     resize();
     const ro = new ResizeObserver(resize);
     if (canvas.parentElement) ro.observe(canvas.parentElement);
     return () => ro.disconnect();
   }, []);
 
-  const handleMouseDown = useCallback((e: any) => {
+  const handleMouseDown = useCallback((e: React.MouseEvent | MouseEvent) => {
     if (view !== '3d') return;
     setIsDragging(true);
     dragMoved.current = false;
     dragStart.current = { x: e.clientX, y: e.clientY, cam: { ...camRef.current } };
   }, [view, setIsDragging]);
 
-  const handleMouseMove = useCallback((e: any) => {
+  const handleMouseMove = useCallback((e: React.MouseEvent | MouseEvent) => {
     if (!isDragging || !dragStart.current) return;
     const dx = (e.clientX - dragStart.current.x) / 200;
     const dy = (e.clientY - dragStart.current.y) / 200;
@@ -311,14 +403,14 @@ export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRot
     setCam({ ...camRef.current }); // Sync back to parent on release
   }, [setIsDragging, setCam]);
 
-  const handleWheel = useCallback((e: any) => {
+  const handleWheel = useCallback((e: React.WheelEvent | WheelEvent) => {
     if (view !== '3d') return;
     e.preventDefault();
     camRef.current.scale = clamp(camRef.current.scale - e.deltaY * 0.001, 0.4, 1.6);
     setCam({ ...camRef.current }); // Sync back
   }, [view, setCam]);
 
-  const handleCanvasClick = useCallback((e: any) => {
+  const handleCanvasClick = useCallback((e: React.MouseEvent | MouseEvent) => {
     if (!isNeural || dragMoved.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -329,17 +421,19 @@ export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRot
     if (view === '3d') {
       const W = canvas.width, H = canvas.height;
       const padX = 70, padY = 55;
-      const lw = model.layers.length > 1 ? (W - padX*2)/(model.layers.length-1) : 0;
+      const layers = model.layers || [];
+      const lw = layers.length > 1 ? (W - padX*2)/(layers.length-1) : 0;
       
       let closestLi = -1;
       let minD = Infinity;
       
-      model.layers.forEach((layer: any, li: number) => {
+      layers.forEach((layer, li) => {
         const x = padX + li * lw;
-        const ng = Math.min(44, (H - padY*2)/Math.max(layer.u,1));
-        const sy = H/2 - ng*(layer.u-1)/2;
+        const u = layer.u || 1;
+        const ng = Math.min(44, (H - padY*2)/Math.max(u,1));
+        const sy = H/2 - ng*(u-1)/2;
         
-        for (let ni = 0; ni < layer.u; ni++) {
+        for (let ni = 0; ni < u; ni++) {
           const x3d = x - W/2, y3d = sy + ni*ng - H/2, z3d = li*28;
           const p = project3D(x3d, y3d, z3d, W, H, camRef.current);
           const d = Math.hypot(p.px - cx, p.py - cy);
@@ -351,28 +445,45 @@ export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRot
       });
       
       if (closestLi !== -1) {
-        setSelLayer((p: any) => p === closestLi ? null : closestLi);
+        setSelLayer((p: number | null) => p === closestLi ? null : closestLi);
       } else {
         setSelLayer(null);
       }
     } else {
-      const pad = 70, n = model.layers.length, lw = n > 1 ? (canvas.width - pad * 2) / (n - 1) : 0;
+      const layers = model.layers || [];
+      const pad = 70, n = layers.length, lw = n > 1 ? (canvas.width - pad * 2) / (n - 1) : 0;
       const li = Math.round((cx - pad) / lw);
-      if (li >= 0 && li < n) setSelLayer((p: any) => p === li ? null : li);
+      if (li >= 0 && li < n) setSelLayer((p: number | null) => p === li ? null : li);
     }
   }, [isNeural, model, setSelLayer, view]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    let cancelled = false;
+
     const tick = () => {
+      if (cancelled) return;
       frameRef.current++;
-      const f = frameRef.current, ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+      const f = frameRef.current;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width;
+      const H = canvas.height;
       if (!ctx) return;
 
       if (autoRotate && view === '3d' && !isDragging) {
         camRef.current.ry += 0.005;
       }
+
+      // Dirty flag logic
+      const isAnimating = isTraining || autoRotate || isDragging || particlesRef.current.length > 0;
+      const stateKey = `${view}-${selLayer}-${vizOpts.showWeights}-${vizOpts.showActivations}-${passProgress}-${camRef.current.ry}-${camRef.current.rx}-${camRef.current.scale}`;
+      
+      if (!isAnimating && stateKey === lastState.current) {
+        animRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      lastState.current = stateKey;
 
       if (isNeural && model.layers) {
         const spawnRate = isTraining ? 2 : 6;
@@ -381,29 +492,38 @@ export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRot
           for (let li = 0; li < layers.length - 1; li++) {
             if (Math.random() < 0.3) {
               particlesRef.current.push({
-                li, fi: Math.floor(Math.random() * layers[li].u),
-                ti: Math.floor(Math.random() * layers[li+1].u),
-                prog: 0, speed: 0.012 + Math.random() * 0.013,
+                li, 
+                fi: Math.floor(Math.random() * (layers[li].u || 0)),
+                ti: Math.floor(Math.random() * (layers[li+1].u || 0)),
+                prog: 0, 
+                speed: PARTICLE_BASE_SPEED + Math.random() * PARTICLE_RANDOM_SPEED,
                 alpha: 0.7 + Math.random() * 0.3,
                 backward: vizOpts.showBackward && !vizOpts.showForward,
               });
             }
           }
         }
+
+        // Particle cap enforcement
+        if (particlesRef.current.length > PARTICLE_CAP) {
+          particlesRef.current = particlesRef.current.slice(-PARTICLE_CAP);
+        }
+
         particlesRef.current = particlesRef.current.map(p => {
           const speed = p.backward ? -p.speed : p.speed;
           return { ...p, prog: p.prog + speed };
         }).filter(p => p.backward ? p.prog > 0 : p.prog < 1);
 
-        drawNeuralCanvas(ctx, W, H, model.layers, {
+        drawNeuralCanvas(ctx, W, H, model.layers, layout, {
           frame: f, selLayer, view, cam: camRef.current,
           particles: particlesRef.current,
           showWeights: vizOpts.showWeights,
           showActivations: vizOpts.showActivations,
           passProgress,
           isBackward: vizOpts.showBackward && !vizOpts.showForward,
-          activations: liveActivations
-        });
+          activations: liveActivations,
+          theme: themeCacheRef.current
+        }, gridCanvasRef.current || undefined);
       } else {
         drawClassical(ctx, W, H, vizType, f);
       }
@@ -411,20 +531,27 @@ export function CanvasViz({ model, selLayer, setSelLayer, view, vizOpts, autoRot
     };
     animRef.current = requestAnimationFrame(tick);
     return () => {
+      cancelled = true;
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [model, selLayer, view, autoRotate, vizOpts, isNeural, vizType, passProgress, isDragging, liveActivations]);
+  }, [model, selLayer, view, autoRotate, vizOpts, isNeural, vizType, passProgress, isDragging, liveActivations, layout]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      onClick={handleCanvasClick}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onWheel={handleWheel}
-      style={{ display: 'block', width: '100%', height: '100%' }}
-    />
+    <div style={{ position: 'relative', width: '100%', height: '100%' }} role="img" aria-label={`Visualization of ${model.name} network`}>
+      <canvas
+        ref={gridCanvasRef}
+        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+      />
+      <canvas
+        ref={canvasRef}
+        onClick={handleCanvasClick}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+        style={{ display: 'block', width: '100%', height: '100%', position: 'relative' }}
+      />
+    </div>
   );
 }

@@ -1,6 +1,12 @@
 import { useState, useRef } from 'react';
 
-export function Tooltip({ children, content, pos = 'bottom' }: any) {
+interface TooltipProps {
+  children: React.ReactNode;
+  content: string | React.ReactNode;
+  pos?: 'top' | 'bottom';
+}
+
+export function Tooltip({ children, content, pos = 'bottom' }: TooltipProps) {
   const [show, setShow] = useState(false);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const ref = useRef<HTMLDivElement>(null);

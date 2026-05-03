@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export function AuthModal({ isOpen, onClose, onAuthSuccess }) {
+import { User } from '@supabase/supabase-js';
+
+interface AuthModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onAuthSuccess: (user: User) => void;
+}
+
+export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -10,7 +18,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -24,10 +32,11 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }) {
       }
 
       if (result.error) throw result.error;
-      onAuthSuccess(result.data.user);
+      if (result.data.user) onAuthSuccess(result.data.user);
       onClose();
     } catch (err) {
-      setError(err.message);
+      if (err instanceof Error) setError(err.message);
+      else setError(String(err));
     } finally {
       setLoading(false);
     }
@@ -38,7 +47,8 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }) {
       const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
       if (error) throw error;
     } catch (err) {
-      setError(err.message);
+      if (err instanceof Error) setError(err.message);
+      else setError(String(err));
     }
   };
 

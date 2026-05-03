@@ -1,10 +1,20 @@
 import { useState, useMemo } from 'react';
 import { T, FW_META, rng } from '../lib/utils';
-import { MODELS } from '../lib/models';
+import { MODELS } from '../data/models';
 
-export function Sparkline({data,keyName,color,h=40,label}: any){
+import { Experiment, TrainingDataPoint } from '../types';
+
+interface SparklineProps {
+  data: TrainingDataPoint[];
+  keyName: string;
+  color: string;
+  h?: number;
+  label?: string;
+}
+
+export function Sparkline({data, keyName, color, h=40, label}: SparklineProps){
   if(!data?.length)return null;
-  const vals=data.map((d:any)=>d[keyName]??0);
+  const vals=data.map((d: TrainingDataPoint)=>d[keyName]??0);
   const mn=Math.min(...vals),mx=Math.max(...vals),rng2=mx-mn||1;
   const W=160,H=h;
   const pts=vals.map((v:number,i:number)=>`${i?'L':'M'}${(i/(vals.length-1))*W},${H-((v-mn)/rng2)*H}`).join(' ');
@@ -29,7 +39,13 @@ export function Sparkline({data,keyName,color,h=40,label}: any){
   );
 }
 
-export function AttentionHeatmap({model}: any){
+import { Model } from '../schemas';
+
+interface AttentionHeatmapProps {
+  model: Model;
+}
+
+export function AttentionHeatmap({model}: AttentionHeatmapProps){
   const n=8;
   const r2=rng(model.key.charCodeAt(0)||42);
   const matrix=Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>{
@@ -63,7 +79,11 @@ export function AttentionHeatmap({model}: any){
   );
 }
 
-export function WeightHistogram({layerIdx}: any){
+interface WeightHistogramProps {
+  layerIdx: number;
+}
+
+export function WeightHistogram({layerIdx}: WeightHistogramProps){
   const bins=20;
   const r2=rng(layerIdx*31+7);
   const weights=Array.from({length:200},()=>{const u=r2()+r2()+r2();return(u-1.5)/2;});
@@ -91,7 +111,11 @@ export function WeightHistogram({layerIdx}: any){
   );
 }
 
-export function ConfusionMatrix({model}: any){
+interface ConfusionMatrixProps {
+  model: Model;
+}
+
+export function ConfusionMatrix({model}: ConfusionMatrixProps){
   const r2=rng(model.key.charCodeAt(0));
   const classes=['Cat','Dog','Bird','Fish'];
   const n=classes.length;
@@ -127,7 +151,12 @@ export function ConfusionMatrix({model}: any){
   );
 }
 
-export function KMeansClusters({ k=3, seed=1 }: any) {
+interface KMeansClustersProps {
+  k?: number;
+  seed?: number;
+}
+
+export function KMeansClusters({ k=3, seed=1 }: KMeansClustersProps) {
   const { points, centroids } = useMemo(() => {
     const r = rng(seed);
     const centroids = Array.from({length:k}, () => [r(), r()]);
@@ -164,22 +193,37 @@ export function KMeansClusters({ k=3, seed=1 }: any) {
   );
 }
 
-export function XGBTreeViz({ depth=3, seed=1 }: any) {
+interface XGBTreeVizProps {
+  depth?: number;
+  seed?: number;
+}
+
+interface TreeNode {
+  id: string;
+  isLeaf: boolean;
+  val?: string;
+  feat?: string;
+  split?: string;
+  left?: TreeNode;
+  right?: TreeNode;
+}
+
+export function XGBTreeViz({ depth=3, seed=1 }: XGBTreeVizProps) {
   const root = useMemo(() => {
     const r = rng(seed);
-    const gen = (d: number, p: string): any => {
+    const gen = (d: number, p: string): TreeNode => {
       if (d >= depth || (d > 0 && r() < 0.2)) return { id: p, val: (r() * 2 - 1).toFixed(3), isLeaf: true };
-      return { id: p, feat: ['Age', 'Income', 'Score'][Math.floor(r()*3)], split: (r()*100).toFixed(0), left: gen(d+1, p+'L'), right: gen(d+1, p+'R') };
+      return { id: p, feat: ['Age', 'Income', 'Score'][Math.floor(r()*3)], split: (r()*100).toFixed(0), left: gen(d+1, p+'L'), right: gen(d+1, p+'R'), isLeaf: false };
     };
     return gen(0, 'root');
   }, [depth, seed]);
 
-  const renderNode = (node: any, x: number, y: number, w: number): any => {
+  const renderNode = (node: TreeNode, x: number, y: number, w: number): React.ReactNode => {
     if (node.isLeaf) {
       return (
         <g key={node.id}>
-          <rect x={x - 20} y={y - 12} width={40} height={24} rx={6} fill={node.val > 0 ? T.greenL : T.redL} stroke={node.val > 0 ? T.green : T.red} strokeWidth={1} />
-          <text x={x} y={y + 5} textAnchor="middle" fontSize={9} fontWeight={700} fill={node.val > 0 ? T.greenDk : T.red}>{node.val}</text>
+          <rect x={x - 20} y={y - 12} width={40} height={24} rx={6} fill={(parseFloat(node.val || '0')) > 0 ? T.greenL : T.redL} stroke={(parseFloat(node.val || '0')) > 0 ? T.green : T.red} strokeWidth={1} />
+          <text x={x} y={y + 5} textAnchor="middle" fontSize={9} fontWeight={700} fill={(parseFloat(node.val || '0')) > 0 ? T.greenDk : T.red}>{node.val}</text>
         </g>
       );
     }
@@ -191,8 +235,8 @@ export function XGBTreeViz({ depth=3, seed=1 }: any) {
         <rect x={x - 30} y={y - 14} width={60} height={28} rx={6} fill={T.white} stroke={T.border} strokeWidth={1.5} />
         <text x={x} y={y - 2} textAnchor="middle" fontSize={8} fill={T.muted}>{node.feat}</text>
         <text x={x} y={y + 8} textAnchor="middle" fontSize={9} fontWeight={700} fill={T.text}>≤ {node.split}</text>
-        {renderNode(node.left, x - w/2, y + hDist, w/2)}
-        {renderNode(node.right, x + w/2, y + hDist, w/2)}
+        {node.left && renderNode(node.left, x - w/2, y + hDist, w/2)}
+        {node.right && renderNode(node.right, x + w/2, y + hDist, w/2)}
       </g>
     );
   };
@@ -206,7 +250,12 @@ export function XGBTreeViz({ depth=3, seed=1 }: any) {
     </div>
   );
 }
-export function MetricsChart({data,metric='loss'}: any){
+interface MetricsChartProps {
+  data: TrainingDataPoint[];
+  metric?: string;
+}
+
+export function MetricsChart({data, metric='loss'}: MetricsChartProps){
   if(!data.length)return(
     <div style={{height:160,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:T.subtle,gap:8}}>
       <div style={{fontSize:28}}>📈</div>
@@ -216,12 +265,12 @@ export function MetricsChart({data,metric='loss'}: any){
   const W=340,H=130,pl=42,pr=14,pt=8,pb=22,n=data.length;
   const keys=metric==='loss'?['loss','vloss']:metric==='lr'?['lr']:metric==='grad'?['grad_norm']:['acc','vacc'];
   const cols=['#4f46e5','#0ea5e9','#059669','#d97706'];
-  const allV=data.flatMap((d:any)=>keys.map(k=>d[k]||0));
+  const allV=data.flatMap((d: TrainingDataPoint)=>keys.map(k=>d[k]||0));
   const mn=Math.min(...allV)*.97,mx=Math.max(...allV)*1.03;
   const lx=(i:number)=>pl+i/(n-1||1)*(W-pl-pr);
   const ly=(v:number)=>pt+(H-pt-pb)*(1-(v-mn)/(mx-mn||1));
   const path=(key:string,col:string,dash:boolean)=>{
-    const pts=data.map((d:any,i:number)=>`${i?'L':'M'}${lx(i).toFixed(1)},${ly(d[key]||0).toFixed(1)}`).join(' ');
+    const pts=data.map((d: TrainingDataPoint,i:number)=>`${i?'L':'M'}${lx(i).toFixed(1)},${ly(d[key]||0).toFixed(1)}`).join(' ');
     const area=`${pts}L${lx(n-1)},${H-pb}L${lx(0)},${H-pb}Z`;
     return(
       <g key={key}>
@@ -256,7 +305,9 @@ export function MetricsChart({data,metric='loss'}: any){
 export function ComparePanel(){
   const [a,setA]=useState('mlp'),[b,setB]=useState('xgb');
   const ma=MODELS.find(m=>m.key===a)||MODELS[0],mb=MODELS.find(m=>m.key===b)||MODELS[0];
-  const fields=[['Category','cat'],['Subcategory','sub'],['Frameworks','fw',(v:any)=>v?.join(', ')],['Params','params'],['Year','year'],['Viz Type','viz']];
+  const fields: [string, keyof Model | string, ((v: any) => string)?][] = [
+    ['Category','cat'],['Subcategory','sub'],['Frameworks','fw',(v: any)=>v?.join(', ')],['Params','params'],['Year','year'],['Viz Type','viz']
+  ];
   return(
     <div style={{display:'flex',flexDirection:'column',gap:12}}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -273,8 +324,8 @@ export function ComparePanel(){
         <div style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',background:T.surf2,padding:'8px 12px',fontWeight:700,fontSize:10,color:T.muted,letterSpacing:'.06em',textTransform:'uppercase'}}>
           <span>Field</span><span style={{color:T.indigo}}>{ma.label}</span><span style={{color:T.violet}}>{mb.label}</span>
         </div>
-        {fields.map(([label,key,fn]: any)=>{
-          const va=fn?fn(ma[key]):ma[key],vb=fn?fn(mb[key]):mb[key];const diff=va!==vb;
+        {fields.map(([label,key,fn])=>{
+          const va=fn?fn(ma[key as keyof Model]):ma[key as keyof Model],vb=fn?fn(mb[key as keyof Model]):mb[key as keyof Model];const diff=va!==vb;
           return(
             <div key={key} style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',padding:'8px 12px',borderTop:`1px solid ${T.border}`,background:T.white}}>
               <span style={{fontSize:10.5,color:T.muted,fontWeight:600}}>{label}</span>
@@ -296,9 +347,16 @@ export function ComparePanel(){
   );
 }
 
-export function ExperimentTracker({experiments,currentModel,currentFw,trainData}: any){
-  const [sel,setSel]=useState<any>(null);
-  const live=trainData.length?[{id:'live',model:currentModel,fw:currentFw,ep:trainData.length,loss:trainData.at(-1)?.loss,acc:trainData.at(-1)?.acc*100,vloss:trainData.at(-1)?.vloss,vacc:trainData.at(-1)?.vacc*100,ts:'Live',status:'running',note:''}]:[];
+interface ExperimentTrackerProps {
+  experiments: Experiment[];
+  currentModel: string;
+  currentFw: string;
+  trainData: TrainingDataPoint[];
+}
+
+export function ExperimentTracker({experiments, currentModel, currentFw, trainData}: ExperimentTrackerProps){
+  const [sel,setSel]=useState<string | null>(null);
+  const live: any[] = trainData.length?[{id:'live',model:currentModel,fw:currentFw,ep:trainData.length,loss:trainData.at(-1)?.loss,acc:(trainData.at(-1)?.acc || 0)*100,vloss:trainData.at(-1)?.vloss,vacc:(trainData.at(-1)?.vacc || 0)*100,ts:'Live',status:'running',note:''}]:[];
   const all=[...live,...experiments];
   return(
     <div style={{display:'flex',flexDirection:'column',gap:0}}>

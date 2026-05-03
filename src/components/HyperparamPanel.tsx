@@ -5,7 +5,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Wand2 } from 'lucide-react';
 import { autoTuneHyperparameters } from '../lib/gemini';
 
-const MODEL_HP: any = {
+interface HyperparamDef {
+  n: string;
+  t: 'log' | 'int' | 'float' | 'cat';
+  min?: number;
+  max?: number;
+  default: HyperparamValue;
+  step?: number;
+  opts?: string[];
+}
+
+const MODEL_HP: Record<string, HyperparamDef[]> = {
   mlp:[{n:'Learning Rate',t:'log',min:-5,max:-2,default:-3},{n:'Hidden Layers',t:'int',min:1,max:8,default:3},{n:'Units/Layer',t:'int',min:16,max:512,default:128},{n:'Dropout',t:'float',min:0,max:0.7,default:0.3,step:0.05},{n:'Activation',t:'cat',opts:['GELU','ReLU','Tanh','SiLU'],default:'GELU'},{n:'Optimizer',t:'cat',opts:['AdamW','Adam','SGD+Mom','RMSProp'],default:'AdamW'},{n:'Weight Decay',t:'log',min:-5,max:-1,default:-4},{n:'Batch Size',t:'cat',opts:['16','32','64','128','256'],default:'64'}],
   cnn:[{n:'Base Filters',t:'cat',opts:['16','32','64','128'],default:'32'},{n:'Kernel Size',t:'cat',opts:['3×3','5×5','7×7'],default:'3×3'},{n:'Depth',t:'int',min:2,max:8,default:4},{n:'Pooling',t:'cat',opts:['Max','Avg','Global Avg'],default:'Max'},{n:'BN Momentum',t:'float',min:0.01,max:0.5,default:0.1,step:0.01}],
   transformer:[{n:'d_model',t:'cat',opts:['64','128','256','512','1024'],default:'256'},{n:'Heads',t:'cat',opts:['4','8','16'],default:'8'},{n:'Enc. Layers',t:'int',min:1,max:24,default:6},{n:'FFN Mult.',t:'cat',opts:['2×','4×','8×'],default:'4×'},{n:'Attention Drop.',t:'float',min:0,max:0.4,default:0.1,step:0.05},{n:'LR Warmup',t:'int',min:0,max:4000,default:1000}],
@@ -13,7 +23,7 @@ const MODEL_HP: any = {
   default:[{n:'Regularization',t:'log',min:-5,max:2,default:0},{n:'Max Iterations',t:'int',min:100,max:5000,default:1000},{n:'Tolerance',t:'log',min:-6,max:-2,default:-4},{n:'Solver',t:'cat',opts:['Auto','L-BFGS','SGD','Coord. Descent'],default:'Auto'}]
 };
 
-const HP_DESC: any = {
+const HP_DESC: Record<string, string> = {
   'Learning Rate': 'Controls how much to change the model in response to the estimated error.',
   'Hidden Layers': 'The number of layers between the input and output layers.',
   'Units/Layer': 'The number of neurons or nodes in each hidden layer.',
@@ -45,12 +55,20 @@ const HP_DESC: any = {
   'Solver': 'Algorithm to use in the optimization problem.'
 };
 
-export function HyperparamPanel({model,onApply}: any){
+import { HyperparamValue } from '../types';
+import { Model } from '../schemas';
+
+interface HyperparamPanelProps {
+  model: Model;
+  onApply: (vals: Record<string, HyperparamValue>) => void;
+}
+
+export function HyperparamPanel({model, onApply}: HyperparamPanelProps){
   const hp=MODEL_HP[model.key]||MODEL_HP.default;
-  const [vals,setVals]=useState(()=>Object.fromEntries(hp.map((h:any)=>[h.n,h.default])));
+  const [vals,setVals]=useState<Record<string, HyperparamValue>>(()=>Object.fromEntries(hp.map((h)=>[h.n,h.default])));
   const [isTuning, setIsTuning] = useState(false);
 
-  useEffect(()=>{const h2=MODEL_HP[model.key]||MODEL_HP.default;setVals(Object.fromEntries(h2.map((h:any)=>[h.n,h.default])));},[model.key]);
+  useEffect(()=>{const h2=MODEL_HP[model.key]||MODEL_HP.default;setVals(Object.fromEntries(h2.map((h)=>[h.n,h.default])));},[model.key]);
   const hp2=MODEL_HP[model.key]||MODEL_HP.default;
 
   const handleAutoTune = async () => {
@@ -58,12 +76,12 @@ export function HyperparamPanel({model,onApply}: any){
     let step = 0;
     // visual spinner animation
     const interval = setInterval(() => {
-      setVals((prev: any) => {
+      setVals((prev: Record<string, HyperparamValue>) => {
         const next = { ...prev };
-        hp2.forEach((h: any) => {
-          if (h.t === 'cat') {
+        hp2.forEach((h: HyperparamDef) => {
+          if (h.t === 'cat' && h.opts) {
             next[h.n] = h.opts[Math.floor(Math.random() * h.opts.length)];
-          } else {
+          } else if (h.max !== undefined && h.min !== undefined) {
             const range = h.max - h.min;
             const val = h.min + Math.random() * range;
             next[h.n] = h.t === 'int' ? Math.round(val) : parseFloat(val.toFixed(2));
@@ -74,25 +92,27 @@ export function HyperparamPanel({model,onApply}: any){
       step++;
     }, 150);
 
-    const optimized = await autoTuneHyperparameters(model.key, vals);
-    clearInterval(interval);
-    
-    if (optimized) {
-       // Validate and merge
-       setVals((prev: any) => {
-           let safe = {...prev};
-           for(const k in optimized) {
-               if(safe.hasOwnProperty(k)) {
-                   safe[k] = optimized[k];
-               }
-           }
-           return safe;
-       });
-    } else {
-       // fallback to random if api failed
-       // the interval stopped randomly so just leave it there or reset
+    try {
+      const optimized = await autoTuneHyperparameters(model.key, vals);
+      if (optimized) {
+         // Validate and merge
+         setVals((prev: Record<string, HyperparamValue>) => {
+             let safe = {...prev};
+             for(const k in optimized) {
+                 if(safe.hasOwnProperty(k)) {
+                     safe[k] = optimized[k] as HyperparamValue;
+                 }
+             }
+             return safe;
+         });
+      } else {
+         // fallback to random if api failed
+         // the interval stopped randomly so just leave it there or reset
+      }
+    } finally {
+      clearInterval(interval);
+      setIsTuning(false);
     }
-    setIsTuning(false);
   };
 
   return(
@@ -113,9 +133,10 @@ export function HyperparamPanel({model,onApply}: any){
       
       <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
         <AnimatePresence>
-          {hp2.map((h:any, i: number)=>{
-            const v=vals[h.n]??h.default;
-            const display=h.t==='log'?`${Math.pow(10,v).toExponential(2)}`:v;
+          {hp2.map((h, i)=>{
+            const v = vals[h.n] ?? h.default;
+            const numV = typeof v === 'number' ? v : 0;
+            const display = h.t === 'log' ? `${Math.pow(10, numV).toExponential(2)}` : String(v);
             return(
               <motion.div 
                 key={h.n} 
@@ -140,18 +161,22 @@ export function HyperparamPanel({model,onApply}: any){
                     }}>{display}</span>
                   </div>
                 </Tooltip>
-                {h.t==='cat'?(
+                {h.t === 'cat' && h.opts ? (
                   <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-                    {h.opts.map((o:any)=><button key={o} onClick={()=>setVals((p:any)=>({...p,[h.n]:o}))} style={{padding:'4px 10px',borderRadius:6,fontSize:10,cursor:'pointer',background:v===o?T.indigo:T.surf2,color:v===o?'#fff':T.muted,border:`1px solid ${v===o?T.indigo:T.border}`,fontFamily:'inherit',transition:'all .2s'}}>{o}</button>)}
+                    {h.opts.map((o: string | number | boolean)=><button key={String(o)} onClick={()=>setVals((p) =>({...p,[h.n]:o}))} style={{padding:'4px 10px',borderRadius:6,fontSize:10,cursor:'pointer',background:v===o?T.indigo:T.surf2,color:v===o?'#fff':T.muted,border:`1px solid ${v===o?T.indigo:T.border}`,fontFamily:'inherit',transition:'all .2s'}}>{String(o)}</button>)}
                   </div>
-                ):(
+                ) : (
                   <div>
-                    <input type="range" min={h.min} max={h.max} step={h.step||h.t==='int'?1:(h.max-h.min)/50} value={v}
-                      onChange={e=>setVals((p:any)=>({...p,[h.n]:parseFloat(e.target.value)}))}
+                    <input type="range" 
+                      min={h.min ?? 0} 
+                      max={h.max ?? 1} 
+                      step={h.step || (h.t === 'int' ? 1 : ((h.max ?? 1) - (h.min ?? 0)) / 50)} 
+                      value={numV}
+                      onChange={e=>setVals((p) =>({...p,[h.n]:parseFloat(e.target.value)}))}
                       style={{width:'100%',accentColor:T.indigo}}/>
                     <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:T.subtle,marginTop:2}}>
-                      <span>{h.t==='log'?Math.pow(10,h.min).toExponential(1):h.min}</span>
-                      <span>{h.t==='log'?Math.pow(10,h.max).toExponential(1):h.max}</span>
+                      <span>{h.t === 'log' ? Math.pow(10, h.min ?? 0).toExponential(1) : (h.min ?? 0)}</span>
+                      <span>{h.t === 'log' ? Math.pow(10, h.max ?? 1).toExponential(1) : (h.max ?? 1)}</span>
                     </div>
                   </div>
                 )}

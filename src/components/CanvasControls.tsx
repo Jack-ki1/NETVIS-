@@ -3,7 +3,19 @@ import { T } from '../lib/utils';
 import { Tooltip } from './Tooltip';
 import { Settings2, RotateCw, Camera } from 'lucide-react';
 
-export function CanvasControls({vizOpts,setVizOpts,view,setView,onAutoRotate,autoRotate,setCam}: any){
+import { CanvasCamera, VizOptions } from '../types';
+
+interface CanvasControlsProps {
+  vizOpts: VizOptions;
+  setVizOpts: React.Dispatch<React.SetStateAction<VizOptions>>;
+  view: string;
+  setView: (v: string) => void;
+  onAutoRotate: () => void;
+  autoRotate: boolean;
+  setCam: React.Dispatch<React.SetStateAction<CanvasCamera>>;
+}
+
+export function CanvasControls({vizOpts, setVizOpts, view, setView, onAutoRotate, autoRotate, setCam}: CanvasControlsProps){
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -17,7 +29,7 @@ export function CanvasControls({vizOpts,setVizOpts,view,setView,onAutoRotate,aut
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const Tog = ({label, k, tooltip}: any) => (
+  const Tog = ({label, k, tooltip}: { label: string, k: keyof VizOptions, tooltip: string }) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', gap: 12 }}>
       <Tooltip content={tooltip}>
         <span style={{ fontSize: 11, color: T.text2, fontWeight: 500 }}>{label}</span>

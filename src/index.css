@@ -18,6 +18,12 @@
   --grad-green: linear-gradient(135deg, #10b981, #059669);
   --grad-orange: linear-gradient(135deg, #f59e0b, #d97706);
   --grad-dark: linear-gradient(145deg, #0f172a, #1e293b);
+
+  --cvz-bg0: #f8fafc;
+  --cvz-bg1: #e2e8f0;
+  --cvz-text: #94a3b8;
+  --cvz-pos: #0ea5e9;
+  --cvz-neg: #ec4899;
 }
 
 [data-theme='dark'] {
@@ -35,6 +41,12 @@
 
   --grad-main: linear-gradient(135deg, #6366f1, #a855f7);
   --grad-surface: linear-gradient(180deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0) 100%);
+
+  --cvz-bg0: #0a1128;
+  --cvz-bg1: #060b18;
+  --cvz-text: rgba(150,180,240,0.4);
+  --cvz-pos: #38bdf8;
+  --cvz-neg: #f472b6;
 }
 
 body {
