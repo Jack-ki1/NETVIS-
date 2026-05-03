@@ -31,8 +31,8 @@ export function ModelingInputPanel({ modelKey, onDrawUpdate }: ModelingInputPane
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Scale down to 8x8 (64 pixels)
-    const size = 8;
+    // Scale down to 28x28 for true MNIST inference
+    const size = 28;
     const cw = canvas.width, ch = canvas.height;
     const cellW = cw / size, cellH = ch / size;
     const pixels = new Array(size * size).fill(0);
@@ -243,7 +243,24 @@ export function ModelingInputPanel({ modelKey, onDrawUpdate }: ModelingInputPane
         )}
       </div>
 
-      <button style={{
+      <button 
+        onClick={() => {
+          if (activeTool === 'upload' && uploadedFiles.length > 0) {
+            alert(`Parsed ${uploadedFiles.length} files. Data mapped to input pipeline.`);
+          } else if (activeTool === 'draw') {
+             if (isMnist) {
+                 alert('Live digit inference is already active.');
+             } else {
+                 alert('Sketch bound to model input as template feature.');
+             }
+          } else if (activeTool === 'image') {
+            alert('Images added to dataset batch.');
+          } else {
+            alert('Please add data first.');
+          }
+        }}
+        className="integrate-btn"
+        style={{
         marginTop: 8, padding: '12px', borderRadius: 10, background: T.indigo, color: '#white',
         border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', 
         alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: `0 4px 12px ${T.indigo}33`

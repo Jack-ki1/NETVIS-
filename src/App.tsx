@@ -90,28 +90,59 @@ export default function App(){
   const isNeural=!!(model.layers?.length);
   const vizType=model.viz||'neural';
 
-  // Real-time MNIST probability inference mock
+  // Real-time MNIST probability inference
   const [mnistProbabilities, setMnistProbabilities] = useState<number[]>(new Array(10).fill(0.1));
+  const [ortSession, setOrtSession] = useState<any>(null);
+
+  useEffect(() => {
+    async function loadOrt() {
+      try {
+        const ort = (window as any).ort;
+        if (!ort) return setTimeout(loadOrt, 500); // Wait for CDN
+        const session = await ort.InferenceSession.create('https://cdn.jsdelivr.net/gh/microsoft/onnxjs-demo@master/docs/mnist.onnx');
+        setOrtSession(session);
+        addLog("Loaded true ONNX MNIST inference model.");
+      } catch (e) {
+        console.error("Failed to load ONNX", e);
+      }
+    }
+    loadOrt();
+  }, []);
+
   useEffect(() => {
     if (modelKey === 'mnist') {
-      if (!mnistInput) {
+      if (!mnistInput || !ortSession) {
           setMnistProbabilities(new Array(10).fill(0.1));
           return;
       }
-      // Deterministic pseudo-inference based on drawn pixels
-      let sum = 0;
-      const logits = new Array(10).fill(0).map((_, i) => {
-        let val = 0;
-        for (let j = 0; j < 64; j++) {
-            val += mnistInput[j] * ((Math.sin(i * 13 + j * 7) + 1) / 2); 
+      
+      async function runInference() {
+        try {
+            const ort = (window as any).ort;
+            // Pad or manipulate array to be exactly 1*1*28*28 if it isn't
+            const tensorObj = new Float32Array(28*28);
+            for(let i=0; i<Math.min(mnistInput!.length, 28*28); i++) tensorObj[i] = mnistInput![i];
+            
+            const tensor = new ort.Tensor('float32', tensorObj, [1, 1, 28, 28]);
+            const feeds: any = {};
+            feeds[ortSession.inputNames[0]] = tensor;
+            const results = await ortSession.run(feeds);
+            const data = results[ortSession.outputNames[0]].data;
+            
+            let sum = 0;
+            const probs = Array.from(data as Float32Array).map(v => {
+                const exp = Math.exp(v); 
+                sum += exp;
+                return exp;
+            });
+            setMnistProbabilities(probs.map(v => v / sum));
+        } catch(e) {
+            console.error("Inference err", e);
         }
-        val = Math.exp(val * 0.5);
-        sum += val;
-        return val;
-      });
-      setMnistProbabilities(logits.map(v => v / sum));
+      }
+      runInference();
     }
-  }, [mnistInput, modelKey]);
+  }, [mnistInput, modelKey, ortSession]);
 
   const [terminalLogs, setTerminalLogs] = useState<string[]>(['[NETVIS] System initialized. Ready for operations.']);
   const addLog = (msg: string) => {

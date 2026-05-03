@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { T } from '../lib/utils';
+import { MODELS } from '../lib/models';
 
 const SNIPPETS: any ={pytorch:{mlp:`import torch, torch.nn as nn, torch.optim as optim
 
@@ -155,8 +156,31 @@ export function CodePanel({modelKey,framework,selLayer}: any){
 
   const getLineHighlight = (line: string) => {
     if (selLayer === null) return false;
-    const kw = ['nn.Linear', 'nn.Conv', 'Dense', 'nn.Embedding', 'TransformerEncoderLayer', 'self.enc', 'self.dec', 'RandomForestClassifier', 'DecisionTreeClassifier', 'xgb.train', 'KMeans', 'layers.append'];
-    return kw.some(k => line.includes(k));
+    const model = MODELS[modelKey];
+    if (!model || !model.layers || !model.layers[selLayer]) return false;
+    
+    const layerType = model.layers[selLayer].t;
+    // Map layer types to code keywords
+    const kwMap: Record<string, string[]> = {
+      'Linear': ['nn.Linear', 'Dense', 'layers.append'],
+      'Input': ['in_d', 'input_dim', 'Input'],
+      'Conv2D': ['nn.Conv', 'Conv2D', 'Conv'],
+      'MaxPool2D': ['nn.MaxPool2d', 'MaxPooling2D', 'MaxPool'],
+      'Attention': ['Transformer', 'MultiHeadAttention', 'self.enc'],
+      'Embedding': ['nn.Embedding'],
+      'Output': ['out_d', 'out_features', 'num_classes', 'head'],
+      'Decision Node': ['DecisionTreeClassifier'],
+      'Tree Ensemble': ['RandomForestClassifier', 'xgb.train'],
+      'Centroids': ['KMeans'],
+      'Encoder': ['self.enc', 'Linear'],
+      'Decoder': ['self.dec', 'Linear'],
+      'Bottleneck (Z)': ['self.mu', 'self.logv', 'reparameterize']
+    };
+    
+    const kws = kwMap[layerType];
+    if (kws && kws.some(k => line.includes(k))) return true;
+
+    return false;
   };
 
   return(

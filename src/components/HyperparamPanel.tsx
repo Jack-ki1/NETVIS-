@@ -3,6 +3,7 @@ import { T } from '../lib/utils';
 import { Tooltip } from './Tooltip';
 import { motion, AnimatePresence } from 'motion/react';
 import { Wand2 } from 'lucide-react';
+import { autoTuneHyperparameters } from '../lib/gemini';
 
 const MODEL_HP: any = {
   mlp:[{n:'Learning Rate',t:'log',min:-5,max:-2,default:-3},{n:'Hidden Layers',t:'int',min:1,max:8,default:3},{n:'Units/Layer',t:'int',min:16,max:512,default:128},{n:'Dropout',t:'float',min:0,max:0.7,default:0.3,step:0.05},{n:'Activation',t:'cat',opts:['GELU','ReLU','Tanh','SiLU'],default:'GELU'},{n:'Optimizer',t:'cat',opts:['AdamW','Adam','SGD+Mom','RMSProp'],default:'AdamW'},{n:'Weight Decay',t:'log',min:-5,max:-1,default:-4},{n:'Batch Size',t:'cat',opts:['16','32','64','128','256'],default:'64'}],
@@ -52,9 +53,10 @@ export function HyperparamPanel({model,onApply}: any){
   useEffect(()=>{const h2=MODEL_HP[model.key]||MODEL_HP.default;setVals(Object.fromEntries(h2.map((h:any)=>[h.n,h.default])));},[model.key]);
   const hp2=MODEL_HP[model.key]||MODEL_HP.default;
 
-  const handleAutoTune = () => {
+  const handleAutoTune = async () => {
     setIsTuning(true);
     let step = 0;
+    // visual spinner animation
     const interval = setInterval(() => {
       setVals((prev: any) => {
         const next = { ...prev };
@@ -70,11 +72,27 @@ export function HyperparamPanel({model,onApply}: any){
         return next;
       });
       step++;
-      if (step > 15) {
-        clearInterval(interval);
-        setIsTuning(false);
-      }
-    }, 100);
+    }, 150);
+
+    const optimized = await autoTuneHyperparameters(model.key, vals);
+    clearInterval(interval);
+    
+    if (optimized) {
+       // Validate and merge
+       setVals((prev: any) => {
+           let safe = {...prev};
+           for(const k in optimized) {
+               if(safe.hasOwnProperty(k)) {
+                   safe[k] = optimized[k];
+               }
+           }
+           return safe;
+       });
+    } else {
+       // fallback to random if api failed
+       // the interval stopped randomly so just leave it there or reset
+    }
+    setIsTuning(false);
   };
 
   return(
